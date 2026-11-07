@@ -10,7 +10,10 @@
  *  - itens      {Array}     dados carregados (vazio até chegar a resposta);
  *  - carregando {boolean}   true enquanto a requisição está em andamento;
  *  - erro       {string}    mensagem de erro (vazia se ok);
- *  - recarregar {() => Promise<void>}  refaz a requisição (chamar após criar/excluir).
+ *  - recarregar {() => Promise<void>}  refaz a requisição (chamar após criar/excluir);
+ *  - setItens   {Function}  setter do estado local — permite atualizações
+ *                           OTIMISTAS (alterar a lista na hora, antes da API
+ *                           responder, e reverter se falhar). Ex.: tela de Metas.
  *
  * O token JWT é anexado automaticamente pelo interceptor de services/api.js.
  */
@@ -39,5 +42,5 @@ export function useRecurso(path, chave) {
     recarregar();
   }, [recarregar]);
 
-  return { itens, carregando, erro, recarregar };
+  return { itens, setItens, carregando, erro, recarregar };
 }

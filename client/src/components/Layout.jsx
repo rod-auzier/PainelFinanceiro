@@ -7,7 +7,8 @@
  *    (56 = 14rem de largura), com e-mail + "Sair" no rodapé.
  *  - <  md (mobile) : sidebar some. No lugar entram:
  *       • uma barra fina no topo (título + "Sair"), e
- *       • uma BOTTOM NAV fixa no rodapé da tela, com os 3 itens.
+ *       • uma BOTTOM NAV fixa no rodapé da tela, com os mesmos itens da sidebar
+ *         (Receitas, Despesas, Resumo, Metas — a lista NAV abaixo alimenta as duas).
  *    O <main> ganha `pb-24` no mobile para o conteúdo não ficar atrás da
  *    bottom nav (`md:pb-6` volta ao normal no desktop).
  *
@@ -24,6 +25,7 @@ const NAV = [
   { to: '/receitas', label: 'Receitas' },
   { to: '/despesas', label: 'Despesas' },
   { to: '/resumo', label: 'Resumo' },
+  { to: '/metas', label: 'Metas' },
 ];
 
 // Item da sidebar (desktop). Altura mínima 44px = área de toque confortável.

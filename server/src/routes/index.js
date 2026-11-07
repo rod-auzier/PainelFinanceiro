@@ -4,6 +4,7 @@ import authRoutes from './auth.routes.js';
 import receitaRoutes from './receita.routes.js';
 import despesaRoutes from './despesa.routes.js';
 import resumoRoutes from './resumo.routes.js';
+import metaRoutes from './meta.routes.js';
 
 const router = Router();
 
@@ -17,5 +18,6 @@ router.use('/', authRoutes);
 router.use('/receitas', receitaRoutes);
 router.use('/despesas', despesaRoutes);
 router.use('/resumo', resumoRoutes);
+router.use('/metas', metaRoutes);
 
 export default router;

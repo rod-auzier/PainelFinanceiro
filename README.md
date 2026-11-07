@@ -90,6 +90,7 @@ Finanças/
 │       │   ├── AuthForm.jsx                 # form e-mail+senha (Login e Registro)
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
 │       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
+│       │   ├── MetaItem.jsx                 # linha de meta: checkbox grande + título + lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
 │       │   ├── SummaryCard.jsx              # cartão de valor agregado (size 'hero' | 'default')
 │       │   └── DespesasPorCategoriaChart.jsx # gráfico de barras Recharts
@@ -98,7 +99,8 @@ Finanças/
 │           ├── Registro.jsx    # Tela de cadastro
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
 │           ├── Despesas.jsx    # Formulário + tabela + total de despesas
-│           └── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
+│           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
+│           └── Metas.jsx       # Lista de metas com checkbox (atualização otimista)
 │
 └── server/                     # Backend (Node.js + Express + Mongoose)
     ├── package.json
@@ -113,7 +115,8 @@ Finanças/
         ├── models/
         │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs) }
         │   ├── Receita.js      # { userId, fonte, descricao, valor, createdAt }
-        │   └── Despesa.js      # { userId, descricao, categoria, valor, createdAt }
+        │   ├── Despesa.js      # { userId, descricao, categoria, valor, createdAt }
+        │   └── Meta.js         # { userId, titulo, concluida (default false), createdAt }
         ├── middlewares/
         │   ├── auth.js         # Valida JWT → injeta req.userId
         │   └── errorHandler.js # 404 + handler de erros padronizado
@@ -123,13 +126,15 @@ Finanças/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
         │   ├── despesa.controller.js  # listar, criar, atualizar, remover (por userId)
-        │   └── resumo.controller.js   # agrega totais (aggregation MongoDB)
+        │   ├── resumo.controller.js   # agrega totais (aggregation MongoDB)
+        │   └── meta.controller.js     # listar, criar, atualizar (PATCH), remover (por userId)
         └── routes/
             ├── index.js           # Agrupa as rotas sob /api (+ /health)
             ├── auth.routes.js     # /api/register, /api/login, /api/me
             ├── receita.routes.js  # /api/receitas  (protegida)
             ├── despesa.routes.js  # /api/despesas  (protegida)
-            └── resumo.routes.js   # /api/resumo    (protegida)
+            ├── resumo.routes.js   # /api/resumo    (protegida)
+            └── meta.routes.js     # /api/metas     (protegida)
 ```
 
 ---
@@ -232,7 +237,7 @@ estão comentados no código:
 
 | Elemento | `< md` (mobile) | `>= md` (desktop) |
 |---|---|---|
-| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (3 itens) + barra fina no topo com "Sair" | **sidebar** lateral fixa (14rem) com "Sair" no rodapé |
+| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (4 itens) + barra fina no topo com "Sair" | **sidebar** lateral fixa (14rem) com "Sair" no rodapé |
 | Listas de Receitas/Despesas ([ListaLancamentos.jsx](client/src/components/ListaLancamentos.jsx)) | **cards empilhados** (label + valor em coluna) | **tabela** com cabeçalho, linhas hairline e rodapé de total |
 | Formulários (Receita/Despesa) | **1 coluna** | **2 colunas** (a partir de `sm`) |
 | Saldo Final (Resumo) | 32px | 36px (`sm`) → 48px (`md`) |
@@ -246,7 +251,7 @@ automático do iOS ao focar); botões e itens de navegação com **≥ 44×44px*
 ## Uso das telas (frontend)
 
 O app tem **duas telas públicas** (Login e Registro) e, após autenticar,
-a navegação para Receitas, Despesas e Resumo (sidebar no desktop, bottom
+a navegação para Receitas, Despesas, Resumo e Metas (sidebar no desktop, bottom
 nav no celular — ver [Responsividade](#responsividade)). O token JWT fica
 no `localStorage`; use "Sair" para descartá-lo.
 
@@ -286,6 +291,20 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 
 Os totais dos cartões vêm de `GET /api/resumo` (somados no MongoDB via
 aggregation); o gráfico é montado no cliente a partir de `GET /api/despesas`.
+
+### Metas (`/metas`)
+Lista de objetivos pessoais com checkbox ("quadradinho") para marcar quando concluir.
+- **Adicionar**: digite no campo e clique em *Adicionar* — ou aperte **Enter**.
+- **Marcar como concluída**: toque no quadradinho (ou no texto). A caixa fica
+  **verde** e o texto **riscado em cinza**. A mudança aparece na hora
+  (**atualização otimista**) e é sincronizada com a API (`PATCH /api/metas/:id`);
+  se a API falhar, volta ao estado anterior e mostra o erro. Desmarcar funciona igual.
+- **Excluir**: ícone de **lixeira** na própria meta (`DELETE /api/metas/:id`).
+- **Contador** no topo: "X de Y concluídas".
+- **Ordem**: pendentes primeiro; concluídas embaixo, sob o rótulo "Concluídas".
+- Sem metas, mostra uma mensagem amigável incentivando a criar a primeira.
+O checkbox e a lixeira têm áreas de toque ≥ 44px; a linha inteira (caixa + texto)
+é clicável (56px de altura).
 
 ---
 
@@ -439,6 +458,10 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria? }`                 | `200 { despesa }` · `400` · `404`                    |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 | GET    | `/api/resumo`         | sim  | —                                                 | `200 { totalReceitas, totalDespesas, saldo }`        |
+| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...] }` (mais recentes primeiro)      |
+| POST   | `/api/metas`          | sim  | `{ titulo }`                                       | `201 { meta }` · `400`                               |
+| PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo? }` (ao menos um)            | `200 { meta }` · `400` · `404`                       |
+| DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 
 ---
 
