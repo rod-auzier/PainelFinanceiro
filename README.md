@@ -90,6 +90,7 @@ Finanças/
 │       ├── components/
 │       │   ├── AuthForm.jsx                 # form e-mail+senha (Login e Registro)
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
+│       │   ├── IconesNav.jsx                # ícones de linha (SVG inline) do menu
 │       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
 │       │   ├── GuardadoCard.jsx             # "Total guardado" + campo Saldo inicial guardado
 │       │   ├── MetaItem.jsx                 # meta: checkbox grande, barra de progresso, editar, lixeira
@@ -260,7 +261,7 @@ estão comentados no código:
 
 | Elemento | `< md` (mobile) | `>= md` (desktop) |
 |---|---|---|
-| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (4 itens) + barra fina no topo com "Sair" | **sidebar** lateral fixa (14rem) com "Sair" no rodapé |
+| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (4 itens, ícone acima do rótulo, ativo em amarelo) + barra fina no topo com "Sair" | **sidebar** lateral fixa (14rem): marca (logo + "Painel Financeiro" / "Controle pessoal"), rótulo "MENU", itens com ícone (ativo: fundo, borda, amarelo e barrinha de 3px na borda esquerda) e cartão do usuário (avatar com a inicial, e-mail, "Sair") no rodapé |
 | Listas de Receitas/Despesas ([ListaLancamentos.jsx](client/src/components/ListaLancamentos.jsx)) | **cards empilhados** (label + valor em coluna) | **tabela** com cabeçalho, linhas hairline e rodapé de total |
 | Formulários (Receita/Despesa) | **1 coluna** | **2 colunas** (a partir de `sm`) |
 | Saldo Final (Resumo) | 32px | 36px (`sm`) → 48px (`md`) |
