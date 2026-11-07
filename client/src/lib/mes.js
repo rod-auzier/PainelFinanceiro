@@ -44,6 +44,16 @@ export function rotuloMes(mes) {
   return new Date(ano, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 
+/**
+ * Nome (só o mês, em minúsculas) de um mês deslocado: `nomeDoMes('2026-11', -1)` → "outubro".
+ * Usado em frases como "em relação a outubro" / "vs outubro".
+ * @param {string} mes     "AAAA-MM"
+ * @param {number} [delta] meses a somar (padrão 0; -1 = mês anterior)
+ */
+export function nomeDoMes(mes, delta = 0) {
+  return rotuloMes(deslocarMes(mes, delta)).split(' de ')[0];
+}
+
 /** Rótulo curto: "2026-11" → "novembro/2026" (usado nas linhas discretas do card de Metas). */
 export function rotuloMesCurto(mes) {
   const [ano, m] = mes.split('-').map(Number);

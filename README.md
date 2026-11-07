@@ -19,7 +19,7 @@ despesas, categorização e visualização de saldo, com autenticação por usu�
   com Tailwind CSS (cores como tokens/CSS variables — ver [Tema](#tema-design-system)),
   layout responsivo (sidebar no desktop / bottom nav no celular — ver
   [Responsividade](#responsividade)). Consome a API via `axios`; o gráfico do Resumo usa
-  `recharts`. O roteamento usa `react-router-dom` e o estado de autenticação
+  SVG feito à mão (rosca do Resumo). O roteamento usa `react-router-dom` e o estado de autenticação
   vive num `AuthContext` — o **token JWT é salvo no `localStorage`** e injetado
   em `Authorization: Bearer <token>` por um interceptor em `services/api.js`.
   Em desenvolvimento, o Vite faz *proxy* de `/api` para o backend, evitando
@@ -75,12 +75,11 @@ Finanças/
 │   └── src/
 │       ├── main.jsx            # Bootstrap do React (Router + AuthProvider)
 │       ├── App.jsx             # Mapa de rotas (públicas + privadas sob Layout)
-│       ├── index.css           # ★ TOKENS DE COR (:root) + base + regras do Recharts
+│       ├── index.css           # ★ TOKENS DE COR (:root) + base + animações do Resumo
 │       ├── lib/
 │       │   ├── format.js       # brl()
 │       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
 │       │   ├── constants.js    # CATEGORIAS_DESPESA + paleta do gráfico
-│       │   └── theme.js        # token('surface') → lê CSS var em runtime (p/ Recharts)
 │       ├── hooks/
 │       │   ├── useRecurso.js   # hook genérico de carregamento de lista da API
 │       │   └── useMesSelecionado.js # mês escolhido no seletor (guardado no sessionStorage)
@@ -96,8 +95,11 @@ Finanças/
 │       │   ├── MetaItem.jsx                 # meta: checkbox grande, barra de progresso, editar, lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
 │       │   ├── SeletorMes.jsx               # ‹ mês › — navegação entre meses (Receitas/Despesas/Resumo)
-│       │   ├── SummaryCard.jsx              # cartão de valor agregado (size 'hero' | 'default')
-│       │   └── DespesasPorCategoriaChart.jsx # gráfico de barras Recharts
+│       │   ├── ResumoSaldoCard.jsx          # Resumo: saldo grande, selo, barra "gastou N% da receita", variação
+│       │   ├── ResumoTotalCard.jsx          # Resumo: card de receitas/despesas com ícone e comparação
+│       │   ├── CategoriasDonut.jsx          # Resumo: rosca (SVG) + lista por categoria, com destaque cruzado
+│       │   ├── MaioresDespesas.jsx          # Resumo: as 5 maiores despesas do mês
+│       │   └── CategoriaPonto.jsx           # bolinha com a cor fixa da categoria
 │       └── pages/
 │           ├── Login.jsx       # Tela de login
 │           ├── Registro.jsx    # Tela de cadastro
@@ -309,19 +311,40 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   select), *Salvar* / *Cancelar* (PUT `/api/despesas/:id`). **✕** exclui.
 
 ### Resumo (`/resumo`)
-- **Seletor de mês** (‹ mês ›) no topo: o resumo e o gráfico são do mês escolhido
-  (o mês selecionado é lembrado ao trocar de aba; nunca antes de outubro/2026).
-  Abrir o mês aqui também gera os fixos dele e mostra o mesmo aviso discreto.
-- **Saldo Final** em destaque: número grande em fonte monoespaçada, verde se
-  ≥ 0 e vermelho se < 0 — é o elemento principal da tela.
-- Logo abaixo, o **indicador** **▲ Superávit** (verde) / **▼ Déficit** (vermelho).
-- Ao lado, dois cards menores: *Total de Receitas* (verde) e *Total de
-  Despesas* (vermelho).
-- **Gráfico (Recharts)**: barras com o total gasto por categoria de despesa;
-  categorias sem gasto são omitidas.
+Tela só **visual**: tudo é calculado com os dados que já existem (nada novo para preencher, nenhuma
+rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular, cores do tema
+(verde `#3ECF8E`, vermelho `#E2604A`, amarelo `#D4A24C`).
 
-Os totais dos cartões vêm de `GET /api/resumo?mes=AAAA-MM` (somados no MongoDB via
-aggregation); o gráfico é montado no cliente a partir de `GET /api/despesas?mes=AAAA-MM`.
+- **Seletor de mês** (‹ mês ›) no topo: tudo é do mês escolhido (lembrado ao trocar de aba; nunca
+  antes de outubro/2026). No **celular fica fixo no topo** enquanto você rola, com botões de 44px.
+  Abrir o mês também gera os fixos dele e mostra o aviso discreto "N fixos adicionados".
+- **Card principal (saldo do mês)**: *Saldo final* grande (verde ≥ 0 / vermelho < 0) com o selo
+  **▲ Superávit / ▼ Déficit**; abaixo, **uma barra horizontal** — "Você gastou **52%** da receita":
+  parte **vermelha** = despesas, parte **verde** = o que sobrou (se gastou mais que recebeu, a barra
+  fica toda vermelha e a legenda troca "Sobrou" por "Faltou"); e, em texto pequeno, a **variação do
+  saldo** ("+R$ 300,00 em relação a outubro"). *Não há* linha de variação em outubro/2026 (não existe
+  mês anterior).
+- **Cards de receitas e despesas**: ícone discreto, valor e **comparação com o mês anterior**
+  ("▲ 15% vs outubro") — a cor mostra se foi bom ou ruim (receita subir = verde; despesa subir =
+  vermelho). Sem comparação quando não há mês anterior ou ele foi zero.
+- **Despesas por categoria**: **rosca (donut)** ao lado de uma **lista** da maior para a menor
+  (bolinha com a cor, nome, valor e % do total). **Passar o mouse (ou tocar)** numa fatia ou num item
+  destaca o outro (o resto esmaece; no toque, tocar de novo desfaz). Com uma única categoria ou
+  nenhuma despesa, mostra um estado simples.
+- **Maiores despesas do mês**: as 5 maiores (descrição, categoria, valor), da maior para a menor.
+- **Cada categoria tem sempre a mesma cor em todo o app** (`COR_CATEGORIA` em `client/src/lib/constants.js`:
+  azul, laranja, lima, rosa, violeta e cinza — fora o verde/vermelho do tema, que têm significado
+  fixo). A mesma bolinha aparece na lista de Despesas.
+- **Layout**: no desktop, o card principal (2/3) fica no topo com receitas/despesas ao lado (1/3), e
+  abaixo, em duas colunas, a rosca com a lista e as maiores despesas; no celular, **uma coluna**,
+  sem rolagem horizontal.
+- **Animações** suaves ao carregar (barra e rosca "preenchendo"), discretas e desligadas para quem usa
+  `prefers-reduced-motion` (regra em `index.css`).
+
+Dados: `GET /api/resumo?mes=` (totais), `GET /api/despesas?mes=` (rosca e maiores) e, se existir mês
+anterior, `GET /api/resumo?mes=<anterior>` (comparações; se falhar, só some a comparação). Os cálculos
+puros (agrupar por categoria, variação %, % comprometido, top 5) estão em `client/src/lib/resumo.js`.
+A rosca é SVG feito à mão — o Recharts foi removido (o bundle caiu de ~590 kB para ~260 kB).
 
 > **Como o mês funciona:** receitas e despesas só têm a data `createdAt`; o mês de um
 > lançamento é o mês do seu `createdAt` (fuso de Brasília, UTC-3). Ao lançar com outro
@@ -607,6 +630,5 @@ todas as queries de receita/despesa filtram por esse `userId`.
 
 - Edição (`PUT`) de receitas e despesas.
 - Filtros por período/categoria e paginação nas listagens.
-- Code-splitting do bundle (o `recharts` deixa o JS acima de 500 kB).
 - Validação de payload com `zod` ou `express-validator`.
 - Testes automatizados (`vitest` no client, `supertest` no server).

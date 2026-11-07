@@ -59,17 +59,23 @@
   }
 }
 
-/* --- Recharts: herda as cores do tema (o SVG não aceita classes Tailwind) --- */
-.recharts-text,
-.recharts-cartesian-axis-tick-value {
-  fill: var(--color-muted);
+/* --- Animações de entrada do Resumo (barras e rosca "preenchendo") ---
+   Discretas e suaves. Quem prefere menos movimento (prefers-reduced-motion) vê o estado
+   final direto, sem transição. */
+.barra-anima {
+  transition: width 0.8s ease-out;
 }
-.recharts-cartesian-axis-line,
-.recharts-cartesian-axis-tick-line {
-  stroke: var(--color-border);
+.donut-fatia {
+  /* O --atraso (definido em cada fatia) escalona o preenchimento; opacidade e espessura
+     respondem rápido ao destaque (hover/toque). */
+  transition:
+    stroke-dasharray 0.8s ease-out var(--atraso, 0s),
+    opacity 0.15s ease,
+    stroke-width 0.15s ease;
 }
-/* Números do eixo Y (valores em R$) em monoespaçada, como nas tabelas. */
-.recharts-yAxis .recharts-cartesian-axis-tick-value {
-  font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
+@media (prefers-reduced-motion: reduce) {
+  .barra-anima,
+  .donut-fatia {
+    transition: none;
+  }
 }

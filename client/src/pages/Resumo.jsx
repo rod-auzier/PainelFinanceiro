@@ -1,31 +1,42 @@
 /**
  * Tela de Resumo (rota `/resumo`, dentro do <Layout>).
  *
- * Responsabilidades:
- *  - mostrar o resumo do MÊS selecionado (seletor ‹ mês › no topo): totais
- *    do backend (GET /api/resumo?mes=AAAA-MM);
- *  - buscar as despesas do mesmo mês (GET /api/despesas?mes=AAAA-MM) para o gráfico;
- *  - destacar o **Saldo Final** como elemento visual principal (número grande,
- *    card `size="hero"`), com Total de Receitas e Total de Despesas como
- *    cards secundários menores ao lado;
- *  - indicador Superávit (verde, `saldo >= 0`) / Déficit (vermelho, `< 0`),
- *    exibido dentro do card do Saldo Final;
- *  - renderizar <DespesasPorCategoriaChart>.
+ * Só VISUAL: reaproveita os dados que a API já devolve (nada de rotas ou regras de cálculo
+ * novas) e não exige preencher nada.
+ *
+ * Dados carregados ao abrir/trocar o mês:
+ *  - GET /api/resumo?mes=AAAA-MM     → totais do mês (receitas, despesas, saldo);
+ *  - GET /api/despesas?mes=AAAA-MM   → despesas do mês (rosca por categoria e "maiores");
+ *  - GET /api/resumo?mes=<anterior>  → totais do mês anterior, para as comparações. Só é pedido
+ *    quando existe mês anterior (nunca em outubro/2026 — MES_INICIAL); se falhar, as
+ *    comparações simplesmente não aparecem.
+ *
+ * Layout:
+ *  - cabeçalho com o seletor de mês — FIXO no topo no celular (sticky), com botões de 44px;
+ *  - desktop (md+): card principal (saldo) em destaque no topo (2/3) com os cards de receitas
+ *    e despesas ao lado (1/3); abaixo, em duas colunas, a rosca com a lista de categorias e as
+ *    5 maiores despesas;
+ *  - celular: tudo em UMA coluna, sem rolagem horizontal.
+ *
+ * Componentes: ResumoSaldoCard, ResumoTotalCard, CategoriasDonut, MaioresDespesas.
+ * Aviso discreto "N fixos adicionados" quando o servidor gerou os fixos do mês ao abri-lo.
  *
  * Não recebe props. Autenticação já garantida pelo <Layout>.
- * Cores/tipografia: tokens do tema (ver `src/index.css`).
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { mensagemFixosGerados } from '../lib/mes.js';
+import { MES_INICIAL, deslocarMes, mensagemFixosGerados, nomeDoMes } from '../lib/mes.js';
+import CategoriasDonut from '../components/CategoriasDonut.jsx';
+import MaioresDespesas from '../components/MaioresDespesas.jsx';
+import ResumoSaldoCard from '../components/ResumoSaldoCard.jsx';
+import ResumoTotalCard from '../components/ResumoTotalCard.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
-import SummaryCard from '../components/SummaryCard.jsx';
-import DespesasPorCategoriaChart from '../components/DespesasPorCategoriaChart.jsx';
 
 export default function Resumo() {
   const [mes, setMes] = useMesSelecionado();
   const [resumo, setResumo] = useState(null); // { totalReceitas, totalDespesas, saldo }
+  const [anterior, setAnterior] = useState(null); // totais do mês anterior (ou null)
   const [despesas, setDespesas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
@@ -42,14 +53,19 @@ export default function Resumo() {
     setErro('');
     (async () => {
       try {
-        const [r1, r2] = await Promise.all([
+        // Mês anterior só existe a partir de novembro/2026 (o painel começa em MES_INICIAL).
+        const mesAnterior = mes > MES_INICIAL ? deslocarMes(mes, -1) : null;
+        const [r1, r2, r3] = await Promise.all([
           api.get(`/resumo?mes=${mes}`),
           api.get(`/despesas?mes=${mes}`),
+          // Falha no mês anterior não derruba a tela: só some a comparação.
+          mesAnterior ? api.get(`/resumo?mes=${mesAnterior}`).catch(() => null) : Promise.resolve(null),
         ]);
         // O aviso só é ligado (nunca apagado por uma resposta posterior com 0 — o React em
         // desenvolvimento roda este efeito duas vezes) e só se ainda estamos no mesmo mês.
-        // As DUAS chamadas abrem o mês e podem gerar fixos (/resumo gera receitas e despesas;
-        // /despesas gera as despesas) — somamos o que cada uma criou.
+        // As DUAS chamadas do mês abrem-no e podem gerar fixos (/resumo gera receitas e
+        // despesas; /despesas gera as despesas) — somamos o que cada uma criou. (O resumo do
+        // mês anterior não entra: o aviso é só do mês exibido.)
         const geradosAgora = (r1.data.fixosGerados ?? 0) + (r2.data.fixosGerados ?? 0);
         if (geradosAgora > 0 && mesAtualRef.current === mes) {
           if (geradosRef.current.mes !== mes) geradosRef.current = { mes, total: 0 };
@@ -59,6 +75,7 @@ export default function Resumo() {
         if (!ativo) return;
         setResumo(r1.data);
         setDespesas(r2.data.despesas ?? []);
+        setAnterior(r3 ? r3.data : null);
       } catch (err) {
         if (ativo) setErro(err.response?.data?.message || 'Falha ao carregar o resumo.');
       } finally {
@@ -70,10 +87,14 @@ export default function Resumo() {
     };
   }, [mes]);
 
-  // O cabeçalho com o seletor de mês fica SEMPRE visível (também durante o
-  // carregamento), para não "piscar" ao trocar de mês.
+  // O cabeçalho com o seletor de mês fica SEMPRE visível (também durante o carregamento), para
+  // não "piscar" ao trocar de mês. No celular ele é FIXO no topo (sticky) enquanto se rola a
+  // página; a margem negativa faz o fundo ocupar a largura toda. A partir de `md` volta ao normal.
   const cabecalho = (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div
+      className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg px-4 py-2
+                 sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:bg-transparent md:p-0"
+    >
       <h1 className="text-lg font-semibold">Resumo</h1>
       <SeletorMes
         mes={mes}
@@ -94,7 +115,7 @@ export default function Resumo() {
     );
   }
 
-  const superavit = resumo.saldo >= 0;
+  const nomeAnterior = nomeDoMes(mes, -1);
 
   return (
     <div className="space-y-6">
@@ -107,29 +128,32 @@ export default function Resumo() {
         </p>
       )}
 
-      {/* Saldo Final em destaque (2/3) + cards secundários (1/3) */}
+      {/* Topo: card principal (2/3) + receitas e despesas (1/3). No celular, uma coluna. */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="md:col-span-2">
-          <SummaryCard titulo="Saldo Final" value={resumo.saldo} tone="auto" size="hero">
-            {/* Indicador Superávit / Déficit */}
-            <span
-              className={`text-sm font-medium ${superavit ? 'text-positive' : 'text-negative'}`}
-            >
-              {superavit ? '▲ Superávit' : '▼ Déficit'}
-            </span>
-          </SummaryCard>
+          <ResumoSaldoCard mes={mes} resumo={resumo} anterior={anterior} />
         </div>
 
         <div className="grid gap-4">
-          <SummaryCard titulo="Total de Receitas" value={resumo.totalReceitas} tone="positive" />
-          <SummaryCard titulo="Total de Despesas" value={resumo.totalDespesas} tone="negative" />
+          <ResumoTotalCard
+            tipo="receita"
+            valor={resumo.totalReceitas}
+            anterior={anterior ? anterior.totalReceitas : null}
+            nomeAnterior={nomeAnterior}
+          />
+          <ResumoTotalCard
+            tipo="despesa"
+            valor={resumo.totalDespesas}
+            anterior={anterior ? anterior.totalDespesas : null}
+            nomeAnterior={nomeAnterior}
+          />
         </div>
       </div>
 
-      {/* Gráfico */}
-      <div className="rounded border border-border bg-surface p-4">
-        <h2 className="mb-3 text-sm font-medium text-muted">Despesas por categoria</h2>
-        <DespesasPorCategoriaChart despesas={despesas} />
+      {/* Abaixo, em duas colunas no desktop: rosca + lista | maiores despesas. */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <CategoriasDonut despesas={despesas} />
+        <MaioresDespesas despesas={despesas} />
       </div>
     </div>
   );

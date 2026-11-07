@@ -32,6 +32,7 @@ import { mensagemFixosGerados } from '../lib/mes.js';
 import { CATEGORIAS_DESPESA } from '../lib/constants.js';
 import Money from '../components/Money.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
+import CategoriaPonto from '../components/CategoriaPonto.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
 
 const FORM_VAZIO = { descricao: '', categoria: 'Outros', valor: '', recorrente: false };
@@ -124,6 +125,13 @@ export default function Despesas() {
       classe: 'text-muted',
       editor: 'select',
       opcoes: CATEGORIAS_DESPESA,
+      // Bolinha com a cor FIXA da categoria (a mesma da rosca do Resumo).
+      render: (d) => (
+        <span className="inline-flex items-center gap-2">
+          <CategoriaPonto categoria={d.categoria} />
+          {d.categoria}
+        </span>
+      ),
     },
     {
       chave: 'recorrente',

@@ -3,8 +3,8 @@
  */
 
 /**
- * Categorias válidas para uma Despesa (usadas no <select> do formulário
- * e como base do gráfico de despesas por categoria no Resumo).
+ * Categorias válidas para uma Despesa (usadas no <select> do formulário,
+ * na lista de Despesas e na rosca de "Despesas por categoria" do Resumo).
  */
 export const CATEGORIAS_DESPESA = [
   'Utilidades',
@@ -16,22 +16,29 @@ export const CATEGORIAS_DESPESA = [
 ];
 
 /**
- * Paleta categórica do gráfico de despesas por categoria (Recharts).
+ * COR DE CADA CATEGORIA — a mesma em TODO o app (bolinhas na lista de Despesas, rosca e
+ * lista do Resumo, "Maiores despesas").
  *
- * É uma paleta de DADOS (uma cor por fatia), separada dos tokens de tema —
- * mas escolhida para funcionar sobre o fundo escuro `--color-bg` (#14181C)
- * e reaproveitando alguns tons do design system:
- *   - Alimentação usa o verde de "positivo" (--color-positive)
- *   - Transporte usa o âmbar de "destaque"  (--color-accent)
- *   - Saúde usa o vermelho de "negativo"    (--color-negative)
- *   - Outros usa o cinza de "texto secundário" (--color-muted)
- * A ordem casa com CATEGORIAS_DESPESA.
+ * Paleta pensada para o fundo escuro (#14181C): seis matizes bem separados entre si
+ * (azul, laranja, lima, rosa, violeta, cinza) e com bom contraste. De propósito NÃO usa o
+ * verde (#3ECF8E) nem o vermelho (#E2604A) do tema — esses dois têm significado fixo
+ * (receita/superávit e despesa/déficit) e numa rosca de despesas confundiriam.
  */
 export const COR_CATEGORIA = {
   Utilidades: '#5B9BD5', // azul
-  Alimentação: '#3ECF8E', // = --color-positive
-  Transporte: '#D4A24C', // = --color-accent
-  Saúde: '#E2604A', // = --color-negative
-  Lazer: '#A78BFA', // roxo
-  Outros: '#8B95A1', // = --color-muted
+  Alimentação: '#F29B62', // laranja
+  Transporte: '#C6D655', // lima
+  Saúde: '#F06EAA', // rosa
+  Lazer: '#A78BFA', // violeta
+  Outros: '#8B95A1', // cinza (= texto secundário)
 };
+
+/** Categoria "oficial" de um valor qualquer: se não estiver na lista, cai em "Outros". */
+export function normalizarCategoria(categoria) {
+  return CATEGORIAS_DESPESA.includes(categoria) ? categoria : 'Outros';
+}
+
+/** Cor fixa de uma categoria (categoria desconhecida usa a cor de "Outros"). */
+export function corDaCategoria(categoria) {
+  return COR_CATEGORIA[normalizarCategoria(categoria)];
+}

@@ -9,3 +9,15 @@ export function brl(valor) {
     currency: 'BRL',
   });
 }
+
+/**
+ * Valor em reais COM SINAL explícito: 300 → "+R$ 300,00", -150 → "-R$ 150,00".
+ * Usado nas variações em relação ao mês anterior.
+ */
+export function brlComSinal(valor) {
+  return Number(valor || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    signDisplay: 'exceptZero',
+  });
+}
