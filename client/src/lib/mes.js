@@ -15,10 +15,29 @@ export const MES_INICIAL = '2026-10';
 
 const doisDigitos = (n) => String(n).padStart(2, '0');
 
-/** Mês de hoje no formato "AAAA-MM" (horário local do navegador). */
+// Fuso do painel — o MESMO do servidor (server/src/utils/mes.js): é nele que um lançamento
+// "pertence" a um mês. Assim, "mês atual" vale o mesmo no navegador e na API, qualquer que seja
+// o fuso do aparelho.
+const FUSO_PAINEL = 'America/Fortaleza';
+const formatadorMes = new Intl.DateTimeFormat('en-CA', { timeZone: FUSO_PAINEL, year: 'numeric', month: '2-digit' });
+
+/**
+ * Mês de hoje no formato "AAAA-MM", no fuso America/Fortaleza (e não no horário do navegador).
+ * É a função ÚNICA de "mês atual" do cliente: decide o mês inicial do seletor e quais meses já
+ * estão FECHADOS (anteriores a ele) — ver `mesFechado`.
+ */
 export function mesAtual() {
-  const d = new Date();
-  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}`;
+  // "en-CA" formata como "2026-11"; formatToParts evita depender desse formato exato.
+  const p = Object.fromEntries(formatadorMes.formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}`;
+}
+
+/**
+ * O mês já está FECHADO? Sim quando é anterior ao mês atual. O mês em andamento e os futuros
+ * estão "abertos". Usado para só comparar com o mês anterior em meses fechados (Resumo).
+ */
+export function mesFechado(mes) {
+  return mes < mesAtual();
 }
 
 /** Garante que um mês não seja anterior a MES_INICIAL (devolve MES_INICIAL se for). */

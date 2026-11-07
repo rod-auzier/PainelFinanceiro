@@ -4,9 +4,10 @@
  * Props:
  *  - mes      {string}   mês exibido, "AAAA-MM".
  *  - resumo   {{ totalReceitas: number, totalDespesas: number, saldo: number }}  totais do mês.
- *  - anterior {{ saldo: number } | null}  resumo do mês ANTERIOR, ou `null` quando não existe
- *             (outubro/2026 — MES_INICIAL — nunca tem) ou não pôde ser carregado. Sem ele, a
- *             linha de variação simplesmente não aparece.
+ *  - anterior {{ saldo: number } | null}  resumo do mês ANTERIOR, ou `null` quando não há
+ *             comparação: outubro/2026 (MES_INICIAL — não existe mês anterior), mês em andamento
+ *             ou futuro (a tela só compara meses FECHADOS) ou falha ao carregar. Sem ele, a
+ *             linha de variação simplesmente não aparece (e nada fica no lugar dela).
  *
  * O que mostra:
  *  1. "Saldo final" grande (fonte mono tabular), verde se ≥ 0 e vermelho se < 0, com o selo

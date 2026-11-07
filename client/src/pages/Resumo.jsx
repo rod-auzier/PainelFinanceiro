@@ -8,8 +8,10 @@
  *  - GET /api/resumo?mes=AAAA-MM     → totais do mês (receitas, despesas, saldo);
  *  - GET /api/despesas?mes=AAAA-MM   → despesas do mês (rosca por categoria e "maiores");
  *  - GET /api/resumo?mes=<anterior>  → totais do mês anterior, para as comparações. Só é pedido
- *    quando existe mês anterior (nunca em outubro/2026 — MES_INICIAL); se falhar, as
- *    comparações simplesmente não aparecem.
+ *    quando existe mês anterior (nunca em outubro/2026 — MES_INICIAL) E o mês exibido já está
+ *    FECHADO (anterior ao mês atual, fuso America/Fortaleza — `mesFechado` em lib/mes.js). No mês
+ *    em andamento e nos futuros NÃO há comparação em nenhum card (o mês ainda não terminou, então
+ *    comparar seria enganoso). Se a chamada falhar, as comparações simplesmente não aparecem.
  *
  * Layout:
  *  - cabeçalho com o seletor de mês — FIXO no topo no celular (sticky), com botões de 44px;
@@ -26,7 +28,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { MES_INICIAL, deslocarMes, mensagemFixosGerados, nomeDoMes } from '../lib/mes.js';
+import { MES_INICIAL, deslocarMes, mensagemFixosGerados, mesFechado, nomeDoMes } from '../lib/mes.js';
 import CategoriasDonut from '../components/CategoriasDonut.jsx';
 import MaioresDespesas from '../components/MaioresDespesas.jsx';
 import ResumoSaldoCard from '../components/ResumoSaldoCard.jsx';
@@ -53,8 +55,9 @@ export default function Resumo() {
     setErro('');
     (async () => {
       try {
-        // Mês anterior só existe a partir de novembro/2026 (o painel começa em MES_INICIAL).
-        const mesAnterior = mes > MES_INICIAL ? deslocarMes(mes, -1) : null;
+        // Comparação só em mês FECHADO e que tenha anterior (o painel começa em MES_INICIAL, então
+        // outubro/2026 nunca tem). Mês em andamento/futuro → sem mês anterior → cards sem a linha.
+        const mesAnterior = mes > MES_INICIAL && mesFechado(mes) ? deslocarMes(mes, -1) : null;
         const [r1, r2, r3] = await Promise.all([
           api.get(`/resumo?mes=${mes}`),
           api.get(`/despesas?mes=${mes}`),

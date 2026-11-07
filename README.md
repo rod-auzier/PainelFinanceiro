@@ -333,11 +333,15 @@ rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular,
   **▲ Superávit / ▼ Déficit**; abaixo, **uma barra horizontal** — "Você gastou **52%** da receita":
   parte **vermelha** = despesas, parte **verde** = o que sobrou (se gastou mais que recebeu, a barra
   fica toda vermelha e a legenda troca "Sobrou" por "Faltou"); e, em texto pequeno, a **variação do
-  saldo** ("+R$ 300,00 em relação a outubro"). *Não há* linha de variação em outubro/2026 (não existe
-  mês anterior).
+  saldo** ("+R$ 300,00 em relação a outubro"). A comparação com o mês anterior **só aparece em meses
+  FECHADOS** (anteriores ao mês atual, no fuso America/Fortaleza): no mês em andamento e nos futuros não
+  há comparação em nenhum card, e em outubro/2026 também não (não existe mês anterior).
+  *Como saber se o mês está fechado:* `mesFechado` em `client/src/lib/mes.js`, sobre o `mesAtual()` do
+  cliente (também em America/Fortaleza, igual ao servidor).
 - **Cards de receitas e despesas**: ícone discreto, valor e **comparação com o mês anterior**
   ("▲ 15% vs outubro") — a cor mostra se foi bom ou ruim (receita subir = verde; despesa subir =
-  vermelho). Sem comparação quando não há mês anterior ou ele foi zero.
+  vermelho). Sem comparação (e sem linha vazia) no mês em andamento/futuro, em outubro/2026 ou quando o
+  mês anterior foi zero.
 - **Despesas por categoria**: **rosca (donut)** ao lado de uma **lista** da maior para a menor
   (bolinha com a cor, nome, valor e % do total). **Passar o mouse (ou tocar)** numa fatia ou num item
   destaca o outro (o resto esmaece; no toque, tocar de novo desfaz). Com uma única categoria ou
@@ -356,7 +360,7 @@ rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular,
   `prefers-reduced-motion` (regra em `index.css`).
 
 Dados: `GET /api/resumo?mes=` (totais), `GET /api/despesas?mes=` (rosca e maiores) e, se existir mês
-anterior, `GET /api/resumo?mes=<anterior>` (comparações; se falhar, só some a comparação). Os cálculos
+anterior **e o mês exibido já está fechado**, `GET /api/resumo?mes=<anterior>` (comparações; se falhar, só some a comparação). Os cálculos
 puros (agrupar por categoria, variação %, % comprometido, top 5) estão em `client/src/lib/resumo.js`.
 A rosca é SVG feito à mão — o Recharts foi removido (o bundle caiu de ~590 kB para ~260 kB).
 

@@ -7,7 +7,9 @@
  *             (receita = verde, seta de entrada; despesa = vermelho, seta de saída).
  *  - valor    {number}                 total do mês exibido.
  *  - anterior {number | null}          total do mesmo tipo no mês anterior, ou `null` quando não
- *             existe mês anterior (outubro/2026) ou não carregou — aí não há comparação.
+ *             há comparação: outubro/2026 (sem mês anterior), mês em andamento/futuro (a tela só
+ *             compara meses FECHADOS) ou falha ao carregar. Sem comparação, o card não mostra
+ *             linha alguma e o conteúdo fica centralizado na vertical (sem espaço sobrando).
  *  - nomeAnterior {string}             nome do mês anterior, ex.: "outubro" (para "vs outubro").
  *
  * Comparação ("▲ 12% vs outubro"): só aparece quando dá para calcular (o mês anterior existe e
@@ -42,7 +44,7 @@ export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior })
   }
 
   return (
-    <section className="rounded border border-border bg-surface p-4" aria-label={receita ? 'Total de receitas' : 'Total de despesas'}>
+    <section className="flex flex-col justify-center rounded border border-border bg-surface p-4" aria-label={receita ? 'Total de receitas' : 'Total de despesas'}>
       <div className="flex items-center gap-2">
         <span
           className={`flex h-6 w-6 items-center justify-center rounded-full bg-bg ${receita ? 'text-positive' : 'text-negative'}`}
