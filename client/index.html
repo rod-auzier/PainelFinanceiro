@@ -13,6 +13,20 @@
     <title>Painel Financeiro Pessoal</title>
 
     <!--
+      ÍCONES (arquivos em client/public/, servidos na raiz do site):
+      - favicon-32.png / favicon-16.png → ícone da aba do navegador
+      - apple-touch-icon.png            → ícone ao "Adicionar à Tela de Início" no iOS
+      - icon-192.png / icon-512.png     → ícones do app instalável (PWA); são
+                                           referenciados em /manifest.json, não aqui
+    -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Web App Manifest: nome, ícones (192/512) e cores do app instalável. -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!--
       Fontes (Google Fonts):
       - Inter        → textos e labels da interface (font-sans no Tailwind)
       - JetBrains Mono → valores monetários e números (font-mono + tabular-nums)
