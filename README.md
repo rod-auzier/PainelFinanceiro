@@ -79,7 +79,7 @@ Finanças/
 │       ├── lib/
 │       │   ├── format.js       # brl()
 │       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
-│       │   ├── constants.js    # CATEGORIAS_DESPESA + paleta do gráfico
+│       │   ├── constants.js    # CATEGORIAS_DESPESA + mapa único de cores das categorias
 │       ├── hooks/
 │       │   ├── useRecurso.js   # hook genérico de carregamento de lista da API
 │       │   └── useMesSelecionado.js # mês escolhido no seletor (guardado no sessionStorage)
@@ -343,9 +343,12 @@ rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular,
   destaca o outro (o resto esmaece; no toque, tocar de novo desfaz). Com uma única categoria ou
   nenhuma despesa, mostra um estado simples.
 - **Maiores despesas do mês**: as 5 maiores (descrição, categoria, valor), da maior para a menor.
-- **Cada categoria tem sempre a mesma cor em todo o app** (`COR_CATEGORIA` em `client/src/lib/constants.js`:
-  azul, laranja, lima, rosa, violeta e cinza — fora o verde/vermelho do tema, que têm significado
-  fixo). A mesma bolinha aparece na lista de Despesas.
+- **Cada categoria tem sempre a mesma cor em todo o app** — paleta "azuis escuros", num único mapa
+  (`COR_CATEGORIA` em `client/src/lib/constants.js`): Utilidades `#3F78B0`, Saúde `#356A9C`,
+  Alimentação `#2B5A86`, Outros `#234A70`, Lazer `#6B7682` (e Transporte `#9AA8B8`); categoria
+  desconhecida usa `#6B7682`. Sem verde/vermelho (significado fixo no tema). Como os azuis são
+  parecidos, a rosca tem vão de 2px entre as fatias e, ao passar o mouse/tocar, destaca a fatia
+  e mostra nome, valor e % no centro. A mesma bolinha aparece na lista de Despesas.
 - **Layout**: no desktop, o card principal (2/3) fica no topo com receitas/despesas ao lado (1/3), e
   abaixo, em duas colunas, a rosca com a lista e as maiores despesas; no celular, **uma coluna**,
   sem rolagem horizontal.

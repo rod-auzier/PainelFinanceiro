@@ -8,9 +8,12 @@
  *
  * O que mostra:
  *  - rosca SVG feita à mão (sem biblioteca de gráficos): uma fatia por categoria, cada uma
- *    com a cor FIXA da categoria (lib/constants.js → COR_CATEGORIA, a mesma em todo o app);
- *    no centro, o total de despesas (ou, com uma categoria em foco, o nome e a %);
- *  - ao lado, a lista: bolinha da cor, nome, valor e % do total de despesas;
+ *    com a cor FIXA da categoria (lib/constants.js → COR_CATEGORIA, a mesma em todo o app).
+ *    Os azuis da paleta são parecidos, então há um VÃO de 2px entre as fatias, na cor do card.
+ *    O buraco é grande para o texto central caber com folga: nele aparece o total de despesas
+ *    (sem centavos) ou, com uma categoria em foco, NOME, VALOR e %;
+ *  - ao lado, a legenda (da maior para a menor): bolinha da cor, NOME INTEIRO (quebra de linha
+ *    em vez de reticências), valor logo abaixo e % do total de despesas à direita;
  *  - INTERAÇÃO: passar o mouse (ou tocar / usar Tab) numa fatia OU num item da lista destaca o
  *    outro — as demais fatias/itens ficam esmaecidas. Mouse = destaca enquanto o ponteiro está
  *    em cima; toque = liga/desliga (tocar de novo na mesma categoria desfaz o destaque);
@@ -30,10 +33,10 @@ import CategoriaPonto from './CategoriaPonto.jsx';
 import Money from './Money.jsx';
 
 // Geometria da rosca (viewBox 120x120). Circunferência = 2πr.
-const RAIO = 48;
-const ESPESSURA = 16;
+const RAIO = 50; // raio do traço (linha central do anel)
+const ESPESSURA = 14; // anel fino => buraco interno de raio 43 (antes 40): mais folga p/ o texto
 const CIRC = 2 * Math.PI * RAIO;
-const FOLGA = 2; // respiro entre fatias (em unidades da circunferência)
+const FOLGA = 2; // vão entre fatias: 2px no viewBox (≈2,5px na tela), na cor do card (trilho abaixo)
 
 /** "52%" / "<1%" a partir de um percentual 0–100. */
 const rotuloPct = (p) => (p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`);
@@ -101,10 +104,11 @@ export default function CategoriasDonut({ despesas }) {
     <Cartao>
       <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-5">
         {/* ---------- Rosca ---------- */}
-        <div className="relative h-[132px] w-[132px] shrink-0">
+        <div className="relative h-[148px] w-[148px] shrink-0">
           <svg viewBox="0 0 120 120" className="h-full w-full" role="img" aria-label="Gráfico de rosca das despesas por categoria">
-            {/* trilho de fundo */}
-            <circle cx="60" cy="60" r={RAIO} fill="none" stroke="var(--color-border)" strokeWidth={ESPESSURA} opacity="0.5" />
+            {/* Trilho de fundo na cor do CARD (surface): é ele que aparece nos vãos entre as
+                fatias, separando bem cada categoria. */}
+            <circle cx="60" cy="60" r={RAIO} fill="none" stroke="var(--color-surface)" strokeWidth={ESPESSURA} />
             {fatias.map((f, i) => {
               const esmaecida = ativa && ativa !== f.categoria;
               return (
@@ -130,22 +134,23 @@ export default function CategoriasDonut({ despesas }) {
           </svg>
 
           {/* Centro da rosca: total de despesas, ou a categoria em foco. */}
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-9 text-center">
             {emFoco ? (
               <>
-                <span className="max-w-full truncate text-[11px] text-muted">{emFoco.categoria}</span>
-                <span className="num text-lg font-medium">{rotuloPct(emFoco.percentual)}</span>
+                <span className="max-w-full truncate text-[11px] leading-tight text-muted">{emFoco.categoria}</span>
+                <Money value={emFoco.total} semCentavos className="text-sm font-medium leading-tight" />
+                <span className="num text-[11px] leading-tight text-muted">{rotuloPct(emFoco.percentual)}</span>
               </>
             ) : (
               <>
-                <span className="text-[10px] uppercase tracking-wide text-muted">Despesas</span>
-                <Money value={total} className="text-xs" />
+                <span className="text-[10px] uppercase leading-tight tracking-wide text-muted">Despesas</span>
+                <Money value={total} semCentavos className="text-sm font-medium leading-tight" />
               </>
             )}
           </div>
         </div>
 
-        {/* ---------- Lista (da maior para a menor) ---------- */}
+        {/* ---------- Legenda (da maior para a menor) ---------- */}
         <ul className="min-w-[210px] flex-1 space-y-0.5">
           {grupos.map((g) => {
             const esmaecido = ativa && ativa !== g.categoria;
@@ -164,9 +169,13 @@ export default function CategoriasDonut({ despesas }) {
                 onBlur={() => setAtiva(null)}
               >
                 <CategoriaPonto categoria={g.categoria} />
-                <span className="min-w-0 flex-1 truncate text-sm">{g.categoria}</span>
-                <Money value={g.total} className="text-sm" />
-                <span className="num w-10 shrink-0 text-right text-xs text-muted">{rotuloPct(g.percentual)}</span>
+                {/* Nome em cima (inteiro; quebra de linha se faltar espaço) e valor embaixo: a
+                    coluna do nome ocupa todo o espaço livre e nunca é cortada com "…". */}
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm leading-tight">{g.categoria}</p>
+                  <Money value={g.total} className="text-xs text-muted" />
+                </div>
+                <span className="num shrink-0 text-right text-xs text-muted">{rotuloPct(g.percentual)}</span>
               </li>
             );
           })}

@@ -10,11 +10,13 @@
  *      • 'negative' → vermelho (token --color-negative)
  *      • 'auto'     → verde se value >= 0, vermelho se value < 0
  *      • 'plain'    → herda a cor do texto ao redor (padrão)
+ *  - semCentavos {boolean} Mostra o valor arredondado, sem centavos ("R$ 2.195"). Só muda a
+ *      exibição — usado onde falta espaço (centro da rosca). Padrão: false.
  *  - className  {string}   Classes extras (ex.: tamanho da fonte no hero do Resumo).
  *
  * Componente puramente de apresentação.
  */
-import { brl } from '../lib/format.js';
+import { brl, brlInteiro } from '../lib/format.js';
 
 const TONE_CLASS = {
   positive: 'text-positive',
@@ -22,7 +24,7 @@ const TONE_CLASS = {
   plain: '',
 };
 
-export default function Money({ value, tone = 'plain', className = '' }) {
+export default function Money({ value, tone = 'plain', semCentavos = false, className = '' }) {
   const cor =
     tone === 'auto'
       ? Number(value) >= 0
@@ -30,5 +32,5 @@ export default function Money({ value, tone = 'plain', className = '' }) {
         : TONE_CLASS.negative
       : TONE_CLASS[tone] ?? '';
 
-  return <span className={`num ${cor} ${className}`.trim()}>{brl(value)}</span>;
+  return <span className={`num ${cor} ${className}`.trim()}>{semCentavos ? brlInteiro(value) : brl(value)}</span>;
 }

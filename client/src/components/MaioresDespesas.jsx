@@ -27,6 +27,7 @@ export default function MaioresDespesas({ despesas }) {
         <ol className="divide-y divide-border">
           {top.map((d, i) => (
             <li key={d._id} className="flex items-center gap-3 py-3">
+              {/* Posição: cor secundária do tema (text-muted), nunca a cor de uma categoria. */}
               <span className="num w-4 shrink-0 text-xs text-muted">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm">{d.descricao}</p>
