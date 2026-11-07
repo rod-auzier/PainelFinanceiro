@@ -9,7 +9,6 @@
 export const CATEGORIAS_DESPESA = [
   'Utilidades',
   'Alimentação',
-  'Transporte',
   'Saúde',
   'Lazer',
   'Outros',
@@ -32,7 +31,6 @@ export const COR_CATEGORIA = {
   Alimentação: '#2B5A86', // azul escuro
   Outros: '#234A70', // azul mais escuro
   Lazer: '#6B7682', // cinza azulado
-  Transporte: '#9AA8B8', // cinza azulado claro (fora da lista pedida; claro p/ não se confundir com Lazer)
 };
 
 /** Cor usada para qualquer categoria nova/desconhecida (a mesma de "Lazer"). */

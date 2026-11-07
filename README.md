@@ -306,7 +306,7 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 
 ### Despesas (`/despesas`)
 - **Formulário**: `Descrição` (obrigatório), `Categoria` (select fixo:
-  Utilidades, Alimentação, Transporte, Saúde, Lazer, Outros) e `Valor`
+  Utilidades, Alimentação, Saúde, Lazer, Outros) e `Valor`
   (obrigatório, ≥ 0).
 - **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: lista e total do mês escolhido;
   novas despesas são lançadas nesse mês. A seta "anterior" fica **desabilitada em
@@ -345,7 +345,7 @@ rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular,
 - **Maiores despesas do mês**: as 5 maiores (descrição, categoria, valor), da maior para a menor.
 - **Cada categoria tem sempre a mesma cor em todo o app** — paleta "azuis escuros", num único mapa
   (`COR_CATEGORIA` em `client/src/lib/constants.js`): Utilidades `#3F78B0`, Saúde `#356A9C`,
-  Alimentação `#2B5A86`, Outros `#234A70`, Lazer `#6B7682` (e Transporte `#9AA8B8`); categoria
+  Alimentação `#2B5A86`, Outros `#234A70`, Lazer `#6B7682`; categoria
   desconhecida usa `#6B7682`. Sem verde/vermelho (significado fixo no tema). Como os azuis são
   parecidos, a rosca tem vão de 2px entre as fatias e, ao passar o mouse/tocar, destaca a fatia
   e mostra nome, valor e % no centro. A mesma bolinha aparece na lista de Despesas.
