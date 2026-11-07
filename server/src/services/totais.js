@@ -4,7 +4,21 @@
  * "Total guardado" das Metas (services/guardado.js).
  */
 import mongoose from 'mongoose';
-import { filtroDesdeInicio, filtroDoMes } from '../utils/mes.js';
+import { MES_INICIAL, filtroDesdeInicio, filtroDoMes, limitesDoMes } from '../utils/mes.js';
+
+/**
+ * Soma `valor` dos documentos de um usuário que satisfaçam um filtro de `createdAt`.
+ * @param {import('mongoose').Model} Model
+ * @param {string} userId
+ * @param {object} filtroData  ex.: `{ createdAt: { $gte, $lt } }`
+ */
+async function somarComFiltro(Model, userId, filtroData) {
+  const [resultado] = await Model.aggregate([
+    { $match: { userId: new mongoose.Types.ObjectId(userId), ...filtroData } },
+    { $group: { _id: null, total: { $sum: '$valor' } } },
+  ]);
+  return resultado?.total ?? 0;
+}
 
 /**
  * Soma o campo `valor` de todos os documentos de um model pertencentes a um
@@ -17,15 +31,23 @@ import { filtroDesdeInicio, filtroDoMes } from '../utils/mes.js';
  *                                               conta lançamentos anteriores ao início do painel)
  * @returns {Promise<number>}                  — soma dos valores; 0 se não houver documentos
  */
-export async function somarValor(Model, userId, mes) {
-  const [resultado] = await Model.aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        ...(mes ? filtroDoMes(mes) : filtroDesdeInicio()),
-      },
-    },
-    { $group: { _id: null, total: { $sum: '$valor' } } },
-  ]);
-  return resultado?.total ?? 0;
+export function somarValor(Model, userId, mes) {
+  return somarComFiltro(Model, userId, mes ? filtroDoMes(mes) : filtroDesdeInicio());
+}
+
+/**
+ * Soma só os MESES FECHADOS: de MES_INICIAL até o mês ANTERIOR ao mês atual. O mês
+ * atual (em andamento) e meses futuros NÃO entram. Ex.: hoje em 07/11/2026 → só outubro;
+ * novembro passa a entrar em 01/12/2026.
+ *
+ * @param   {import('mongoose').Model} Model
+ * @param   {string} userId
+ * @param   {string} mesAtualRef  mês atual "AAAA-MM" (use `mesAtual()` de utils/mes.js)
+ * @returns {Promise<number>}  0 se ainda não há mês fechado (mês atual ≤ MES_INICIAL)
+ */
+export function somarMesesFechados(Model, userId, mesAtualRef) {
+  if (mesAtualRef <= MES_INICIAL) return Promise.resolve(0); // outubro/2026 ainda está em andamento
+  return somarComFiltro(Model, userId, {
+    createdAt: { $gte: limitesDoMes(MES_INICIAL).inicio, $lt: limitesDoMes(mesAtualRef).inicio },
+  });
 }

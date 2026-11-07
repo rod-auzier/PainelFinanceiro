@@ -126,11 +126,11 @@ Finanças/
         │   └── errorHandler.js # 404 + handler de erros padronizado
         ├── utils/
         │   ├── asyncHandler.js # Encaminha erros de handlers async ao errorHandler
-        │   └── mes.js          # MES_INICIAL + mês "AAAA-MM": limites no fuso de Brasília, filtro por createdAt
+        │   └── mes.js          # MES_INICIAL + mês "AAAA-MM": mesAtual() em America/Fortaleza, limites do mês, filtro por createdAt
         ├── services/
         │   ├── fixos.js        # geração AUTOMÁTICA dos fixos do mês (idempotente, com marcador único)
-        │   ├── totais.js       # somarValor: soma de receitas/despesas (aggregation, a partir de MES_INICIAL)
-        │   └── guardado.js     # total guardado + conclusão automática das metas
+        │   ├── totais.js       # somarValor / somarMesesFechados: somas de receitas/despesas (aggregation)
+        │   └── guardado.js     # total guardado (só meses fechados) + parcial do mês + conclusão automática das metas
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
@@ -337,7 +337,8 @@ em diante. A constante vive em um único lugar por lado: `server/src/utils/mes.j
   um mês antigo guardado na sessão é ajustado para outubro/2026.
 - A API recusa (`400`) `?mes=` ou `mes` anteriores a `2026-10`; listas e somas **sem**
   `mes` só enxergam lançamentos de outubro/2026 em diante.
-- O **total guardado** das Metas considera só lançamentos de outubro/2026 em diante,
+- O **total guardado** das Metas considera só lançamentos de outubro/2026 em diante
+  **e só meses fechados** (ver [Total guardado: só meses fechados](#total-guardado-só-meses-fechados)),
   mais o "Saldo inicial guardado".
 
 **Fixos automáticos (feitos no backend)** — lançamentos com "Repete todo mês" são
@@ -355,6 +356,28 @@ criados sozinhos ao abrir um mês (`GET /api/receitas|despesas?mes=` e `GET /api
 - a resposta traz `fixosGerados` (quantos foram criados na chamada) e a tela mostra um aviso
   discreto ("N fixos adicionados").
 O "total guardado" também garante a geração de todos os meses até o atual antes de somar.
+
+### Total guardado: só meses fechados
+
+O **Total guardado** das Metas conta apenas **meses fechados**:
+
+> **Total guardado = Saldo inicial guardado + Σ (receitas − despesas) de cada mês, de outubro/2026
+> (`MES_INICIAL`) até o mês ANTERIOR ao mês atual.** O mês em andamento **não entra** no total.
+
+Exemplo — hoje é 07/11/2026: **entra outubro**; novembro só passa a entrar em **01/12/2026**,
+dezembro em 01/01/2027, e assim por diante. Meses futuros também não entram. Como as barras de
+progresso (e a conclusão automática) usam esse total, uma meta **não é concluída por um mês ainda
+aberto** — só quando ele fecha.
+
+- **"Hoje" é a data em `America/Fortaleza` (UTC-3)**, calculada no backend — nunca o fuso do servidor
+  (na Vercel é UTC e viraria o mês 3 horas antes). Há **uma única função** para "mês atual":
+  `mesAtual()` em `server/src/utils/mes.js`, reutilizada pelo total guardado, pela geração
+  automática de fixos e pela criação de lançamentos. O mês vira à meia-noite de Fortaleza
+  (ex.: às 23h59 de 30/11 ainda é novembro, mesmo que em UTC já seja dezembro).
+- O resultado **parcial do mês em andamento** é devolvido à parte (`emAndamento` em `GET /api/guardado`)
+  só para exibir: na tela de Metas aparece uma linha discreta — *"Mês em andamento (novembro/2026),
+  entra em 01/12/2026: R$ X"* — com o nome do mês e a data calculados dinamicamente.
+- Antes de outubro/2026 (painel ainda não começou) o total é só o saldo inicial e não há mês em andamento.
 
 ### Limpeza dos meses anteriores a outubro/2026 (script manual)
 
@@ -380,7 +403,11 @@ Objetivos pessoais com checkbox ("quadradinho") e, opcionalmente, um **valor** q
 vira barra de progresso.
 
 **Total guardado** (card no topo)
-- Fórmula: **saldo inicial guardado + (receitas − despesas de outubro/2026 em diante)**.
+- Fórmula: **saldo inicial guardado + (receitas − despesas) dos MESES FECHADOS**, de outubro/2026 até o
+  mês anterior ao atual — o mês em andamento não entra (ver
+  [Total guardado: só meses fechados](#total-guardado-só-meses-fechados)).
+- Linhas do card: *Saldo inicial guardado*, *Receitas − despesas (meses fechados, desde out/2026)* e,
+  discreta, *Mês em andamento (novembro/2026), entra em 01/12/2026: R$ X* (parcial, ainda fora do total).
 - O **Saldo inicial guardado** é um único número por usuário, editável ali mesmo
   (*Salvar saldo*): use-o para acertar o que você já tinha guardado antes de usar o
   painel. Ao salvar, as metas são reavaliadas.
@@ -408,6 +435,12 @@ vira barra de progresso.
 
 O checkbox, o lápis e a lixeira têm áreas de toque ≥ 44px; a linha inteira (caixa +
 texto) é clicável (56px). Valores em fonte mono tabular, tema escuro e responsivo.
+
+**Carregamento robusto**: a tela faz **uma única** chamada (`GET /api/metas`, que já traz o total
+guardado — duas chamadas simultâneas disputavam a geração de fixos no servidor); a sincronização com o
+total nunca bloqueia a lista (se falhar, as metas ainda são devolvidas); as requisições têm *timeout* de
+20 s e, se falharem, a tela mostra o erro com o botão **Tentar de novo** (em vez de ficar em
+"Carregando…" para sempre). As metas existentes nunca são alteradas por essas mudanças.
 
 ---
 
@@ -561,12 +594,12 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404`                    |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 | GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo, fixosGerados }` (do mês; sem `mes`, de out/2026 em diante) |
-| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...] }` (mais recentes primeiro; já sincronizadas com o total guardado) |
+| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado }` (mais recentes primeiro; já sincronizadas; `guardado` = o mesmo objeto de `GET /api/guardado`, numa chamada só) |
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total }`        |
-| PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total }` · `400` |
+| GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total, emAndamento }` — só meses fechados; `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total) |
+| PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total, emAndamento }` · `400` |
 
 ---
 

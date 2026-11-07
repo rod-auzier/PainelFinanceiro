@@ -6,7 +6,7 @@
  * nem apaga metas de outro.
  *
  * Metas podem ter um `valorAlvo` (R$). Nesse caso, quando o TOTAL GUARDADO
- * (saldo inicial + receitas − despesas, ver services/guardado.js) atinge o
+ * (saldo inicial + receitas − despesas dos MESES FECHADOS, ver services/guardado.js) atinge o
  * alvo, a meta é marcada como concluída automaticamente. Essa sincronização
  * roda ao listar, criar e atualizar metas, então as respostas já refletem o
  * estado atual.
@@ -14,6 +14,23 @@
 import mongoose from 'mongoose';
 import { Meta, TITULO_MAX } from '../models/Meta.js';
 import { calcularESincronizar } from '../services/guardado.js';
+
+/**
+ * Sincroniza as metas com o total guardado (só meses fechados) SEM deixar uma falha travar
+ * a resposta: se o cálculo ou a geração de fixos der erro, registra no log e segue — a lista
+ * de metas (o que o usuário quer ver) continua sendo devolvida, só sem a conclusão automática
+ * daquela vez.
+ * @param   {string} userId
+ * @returns {Promise<object|null>}  o total guardado (ver services/guardado.js) ou `null` se falhou
+ */
+async function sincronizarSemFalhar(userId) {
+  try {
+    return await calcularESincronizar(userId);
+  } catch (erro) {
+    console.error('[metas] não foi possível sincronizar com o total guardado:', erro);
+    return null;
+  }
+}
 
 /**
  * Valida e normaliza um título vindo do body.
@@ -50,14 +67,19 @@ function validarValorAlvo(valor) {
  * @access  Privado — header `Authorization: Bearer <token>`
  * @param   {import('express').Request}  req  — usa `req.userId`; ignora body e query
  * @param   {import('express').Response} res
- * @returns {200} `{ metas: Array<{ _id, userId, titulo, concluida, valorAlvo, alvoAtingido, createdAt, updatedAt }> }`
- *               ordenado por `createdAt` (mais recentes primeiro). `valorAlvo` é `null` nas metas
- *               sem valor. A separação pendentes/concluídas é feita no frontend.
+ * @returns {200} `{ metas: Array<{ _id, userId, titulo, concluida, valorAlvo, alvoAtingido, createdAt, updatedAt }>, guardado }`
+ *               `metas` ordenado por `createdAt` (mais recentes primeiro); `valorAlvo` é `null` nas
+ *               metas sem valor. A separação pendentes/concluídas é feita no frontend.
+ *               `guardado` = `{ saldoInicial, saldoAcumulado, total, emAndamento }` (mesmo formato de
+ *               GET /api/guardado, só meses fechados) — vai junto para a tela de Metas precisar de UMA
+ *               chamada só (duas chamadas simultâneas disputariam a geração de fixos). É `null` se o
+ *               cálculo falhou (a lista é devolvida mesmo assim).
  */
 export async function listarMetas(req, res) {
-  await calcularESincronizar(req.userId); // conclui automaticamente as metas cujo alvo foi atingido
+  // Conclui automaticamente as metas cujo alvo foi atingido e já traz o total guardado.
+  const guardado = await sincronizarSemFalhar(req.userId);
   const metas = await Meta.find({ userId: req.userId }).sort({ createdAt: -1 });
-  res.json({ metas });
+  res.json({ metas, guardado });
 }
 
 /**
@@ -87,7 +109,7 @@ export async function criarMeta(req, res) {
     valorAlvo: alvo.valorAlvo ?? null,
   });
 
-  await calcularESincronizar(req.userId);
+  await sincronizarSemFalhar(req.userId);
   const meta = await Meta.findById(criada._id); // relê: pode ter sido concluída automaticamente
   return res.status(201).json({ meta });
 }
@@ -154,7 +176,7 @@ export async function atualizarMeta(req, res) {
   }
   await meta.save(); // roda os validadores do schema
 
-  await calcularESincronizar(req.userId);
+  await sincronizarSemFalhar(req.userId);
   const atualizada = await Meta.findById(meta._id); // relê: pode ter sido concluída automaticamente
   return res.json({ meta: atualizada });
 }

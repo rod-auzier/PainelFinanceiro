@@ -44,6 +44,19 @@ export function rotuloMes(mes) {
   return new Date(ano, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 
+/** Rótulo curto: "2026-11" → "novembro/2026" (usado nas linhas discretas do card de Metas). */
+export function rotuloMesCurto(mes) {
+  const [ano, m] = mes.split('-').map(Number);
+  const nome = new Date(ano, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long' });
+  return `${nome}/${ano}`;
+}
+
+/** "2026-12-01" → "01/12/2026" (troca de formato só no texto, sem passar por Date/fuso). */
+export function formatarDataIso(iso) {
+  const [ano, m, d] = iso.split('-');
+  return `${d}/${m}/${ano}`;
+}
+
 /**
  * Aviso discreto quando o servidor gerou fixos automaticamente ao abrir o mês.
  * @param {number} n  quantidade gerada (campo `fixosGerados` da API)

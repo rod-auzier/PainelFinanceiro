@@ -1,13 +1,16 @@
 /**
  * GuardadoCard — "Total guardado" da aba Metas + campo "Saldo inicial guardado".
  *
- * Total guardado = saldo inicial + (receitas − despesas de outubro/2026 em diante).
+ * Total guardado = saldo inicial + (receitas − despesas) dos MESES FECHADOS, de outubro/2026
+ * até o mês anterior ao atual. O mês em andamento NÃO entra no total: ele aparece numa linha
+ * discreta à parte ("Mês em andamento (novembro/2026): R$ X, entra em 01/12/2026").
  * O saldo inicial é um único número por usuário: serve para acertar o que
  * você já tinha guardado antes de começar a usar o painel.
  *
  * Props:
- *  - guardado {{ saldoInicial: number, saldoAcumulado: number, total: number } | null}
- *      Dados vindos de GET /api/guardado (null enquanto carrega).
+ *  - guardado {{ saldoInicial, saldoAcumulado, total, emAndamento: { mes, saldo, entraEm } | null } | null}
+ *      Dados vindos de GET /api/guardado (null enquanto carrega). `emAndamento` é o parcial do
+ *      mês atual (ainda fora do total); o nome do mês e a data em que entra vêm dele (dinâmicos).
  *  - onSalvarSaldoInicial {(valor: number) => Promise<void>}
  *      Chamado ao salvar o saldo inicial. Deve lançar Error com mensagem se
  *      falhar (a mensagem aparece abaixo do campo).
@@ -21,6 +24,7 @@
  * Valores monetários em <Money> (mono + tabular-nums); cores pelos tokens do tema.
  */
 import { useEffect, useState } from 'react';
+import { formatarDataIso, rotuloMesCurto } from '../lib/mes.js';
 import Money from './Money.jsx';
 
 const INPUT =
@@ -76,11 +80,23 @@ export default function GuardadoCard({ guardado, onSalvarSaldoInicial }) {
           </dd>
         </div>
         <div className="flex items-baseline justify-between gap-3">
-          <dt>Receitas − despesas (desde out/2026)</dt>
+          <dt>Receitas − despesas (meses fechados, desde out/2026)</dt>
           <dd>
             <Money value={guardado.saldoAcumulado} tone="auto" />
           </dd>
         </div>
+        {/* Parcial do mês em andamento: informativo, AINDA NÃO somado ao total. */}
+        {guardado.emAndamento && (
+          <div className="flex items-baseline justify-between gap-3 text-xs">
+            <dt>
+              Mês em andamento ({rotuloMesCurto(guardado.emAndamento.mes)}), entra em{' '}
+              {formatarDataIso(guardado.emAndamento.entraEm)}
+            </dt>
+            <dd>
+              <Money value={guardado.emAndamento.saldo} tone="auto" />
+            </dd>
+          </div>
+        )}
       </dl>
 
       {/* Edição do saldo inicial */}

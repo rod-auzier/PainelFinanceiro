@@ -1,12 +1,19 @@
 /**
  * "Total guardado" e conclusão automática das Metas.
  *
- * TOTAL GUARDADO = saldo inicial guardado (campo do usuário)
- *                + soma das receitas
- *                − soma das despesas      (de MES_INICIAL em diante; nada anterior conta)
+ * REGRA DOS MESES FECHADOS
+ *   TOTAL GUARDADO = saldo inicial guardado (campo do usuário)
+ *                  + Σ (receitas − despesas) de cada mês FECHADO
+ *   Mês fechado = de MES_INICIAL (outubro/2026) até o mês ANTERIOR ao mês atual. O mês
+ *   atual (em andamento) e os futuros NÃO entram. Exemplo: hoje é 07/11/2026 → só
+ *   outubro conta; novembro passa a entrar em 01/12/2026, dezembro em 01/01/2027…
+ *   "Hoje" é a data em America/Fortaleza (utils/mes.js → mesAtual), nunca a do servidor.
+ *   O resultado PARCIAL do mês em andamento é devolvido à parte (`emAndamento`) só para
+ *   a tela mostrar — ele ainda não está somado ao total.
  *
  * Antes de somar, garante que os fixos de todos os meses até o mês atual já foram
- * gerados (services/fixos.js) — senão o total mudaria só depois de abrir cada mês.
+ * gerados (services/fixos.js) — senão o total mudaria só depois de abrir cada mês e o
+ * parcial do mês atual ficaria sem os recorrentes.
  *
  * CONCLUSÃO AUTOMÁTICA: quando o total guardado atinge o `valorAlvo` de uma
  * meta, ela é marcada como concluída sozinha — sem impedir o usuário de
@@ -26,29 +33,61 @@ import { Despesa } from '../models/Despesa.js';
 import { Meta } from '../models/Meta.js';
 import { User } from '../models/User.js';
 import { garantirFixosAteMesAtual } from './fixos.js';
-import { somarValor } from './totais.js';
+import { somarMesesFechados, somarValor } from './totais.js';
+import { MES_INICIAL, mesAtual, mesSeguinte } from '../utils/mes.js';
 
 /** Arredonda para centavos (evita 4999.999999… em somas de ponto flutuante). */
 export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
 
 /**
- * Calcula o total guardado do usuário (gerando antes os fixos pendentes até o mês atual).
+ * Calcula o total guardado do usuário (só MESES FECHADOS) e o parcial do mês em andamento,
+ * gerando antes os fixos pendentes até o mês atual.
+ *
  * @param   {string} userId
- * @returns {Promise<{ saldoInicial: number, saldoAcumulado: number, total: number }>}
- *          `saldoAcumulado` = receitas − despesas (de MES_INICIAL em diante); `total` = saldoInicial + saldoAcumulado.
+ * @param   {string} [hoje]  mês atual "AAAA-MM" (padrão: `mesAtual()`, fuso America/Fortaleza).
+ *                           Parâmetro para testes.
+ * @returns {Promise<{
+ *   saldoInicial: number,
+ *   saldoAcumulado: number,
+ *   total: number,
+ *   emAndamento: null | { mes: string, receitas: number, despesas: number, saldo: number, entraEm: string }
+ * }>}
+ *   - `saldoAcumulado` = receitas − despesas dos meses FECHADOS (de MES_INICIAL ao mês anterior ao atual);
+ *   - `total`          = saldoInicial + saldoAcumulado (o mês em andamento NÃO está incluído);
+ *   - `emAndamento`    = resultado parcial do mês atual, que ainda NÃO está no total: `mes` ("AAAA-MM"),
+ *                        `receitas`, `despesas`, `saldo` e `entraEm` (data "AAAA-MM-DD" em que passa a
+ *                        entrar: dia 1 do mês seguinte). `null` se o painel ainda não começou (hoje <
+ *                        MES_INICIAL).
  */
-export async function calcularGuardado(userId) {
-  await garantirFixosAteMesAtual(userId);
+export async function calcularGuardado(userId, hoje = mesAtual()) {
+  await garantirFixosAteMesAtual(userId, hoje);
 
-  const [usuario, receitas, despesas] = await Promise.all([
+  const painelComecou = hoje >= MES_INICIAL;
+  const [usuario, receitasFechadas, despesasFechadas, receitasMes, despesasMes] = await Promise.all([
     User.findById(userId).select('saldoInicial'),
-    somarValor(Receita, userId),
-    somarValor(Despesa, userId),
+    somarMesesFechados(Receita, userId, hoje),
+    somarMesesFechados(Despesa, userId, hoje),
+    painelComecou ? somarValor(Receita, userId, hoje) : 0,
+    painelComecou ? somarValor(Despesa, userId, hoje) : 0,
   ]);
 
   const saldoInicial = arredondar(usuario?.saldoInicial ?? 0);
-  const saldoAcumulado = arredondar(receitas - despesas);
-  return { saldoInicial, saldoAcumulado, total: arredondar(saldoInicial + saldoAcumulado) };
+  const saldoAcumulado = arredondar(receitasFechadas - despesasFechadas);
+
+  return {
+    saldoInicial,
+    saldoAcumulado,
+    total: arredondar(saldoInicial + saldoAcumulado),
+    emAndamento: painelComecou
+      ? {
+          mes: hoje,
+          receitas: arredondar(receitasMes),
+          despesas: arredondar(despesasMes),
+          saldo: arredondar(receitasMes - despesasMes),
+          entraEm: `${mesSeguinte(hoje)}-01`, // o mês em andamento entra no total no dia 1 do mês seguinte
+        }
+      : null,
+  };
 }
 
 /**
@@ -72,11 +111,12 @@ export async function sincronizarMetas(userId, total) {
 }
 
 /**
- * Atalho: calcula o total guardado, sincroniza as metas e devolve o total.
+ * Atalho: calcula o total guardado (meses fechados), sincroniza as metas e devolve o resultado.
  * @param   {string} userId
+ * @param   {string} [hoje]  mês atual "AAAA-MM" (padrão: `mesAtual()`); parâmetro para testes.
  */
-export async function calcularESincronizar(userId) {
-  const guardado = await calcularGuardado(userId);
+export async function calcularESincronizar(userId, hoje = mesAtual()) {
+  const guardado = await calcularGuardado(userId, hoje);
   await sincronizarMetas(userId, guardado.total);
   return guardado;
 }

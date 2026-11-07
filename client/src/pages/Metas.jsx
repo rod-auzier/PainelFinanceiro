@@ -22,7 +22,7 @@
  * Não recebe props. Autenticação já garantida pelo <Layout>.
  * Cores/tipografia: tokens do tema (ver `src/index.css`).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import GuardadoCard from '../components/GuardadoCard.jsx';
@@ -38,14 +38,13 @@ const TITULO_MAX = 200; // mesmo limite do backend (models/Meta.js)
 const mensagemDeErro = (err, padrao) => err.response?.data?.message || padrao;
 
 export default function Metas() {
-  const { itens: metas, setItens: setMetas, carregando, erro, recarregar } = useRecurso('/metas', 'metas');
-  const [guardado, setGuardado] = useState(null); // { saldoInicial, saldoAcumulado, total }
+  const [guardado, setGuardado] = useState(null); // { saldoInicial, saldoAcumulado, total, emAndamento }
   const [titulo, setTitulo] = useState('');
   const [valor, setValor] = useState('');
   const [adicionando, setAdicionando] = useState(false);
   const [erroAcao, setErroAcao] = useState('');
 
-  /** Busca o total guardado (saldo inicial + receitas − despesas). */
+  /** Busca o total guardado em GET /api/guardado (usado só como reserva, ver abaixo). */
   const carregarGuardado = useCallback(async () => {
     try {
       const { data } = await api.get('/guardado');
@@ -55,9 +54,17 @@ export default function Metas() {
     }
   }, []);
 
-  useEffect(() => {
-    carregarGuardado();
-  }, [carregarGuardado]);
+  // UMA chamada só: GET /api/metas já devolve as metas E o total guardado (meses fechados).
+  // (Duas chamadas simultâneas — metas + guardado — disputavam a geração de fixos no servidor.)
+  // Só se o servidor não conseguiu calcular o total (`guardado: null`) buscamos em separado.
+  const { itens: metas, setItens: setMetas, carregando, erro, recarregar } = useRecurso(
+    '/metas',
+    'metas',
+    (data) => {
+      if (data.guardado) setGuardado(data.guardado);
+      else carregarGuardado();
+    },
+  );
 
   // Pendentes primeiro, concluídas embaixo. A ordem dentro de cada grupo
   // segue a da API (mais recentes primeiro).
@@ -140,6 +147,7 @@ export default function Metas() {
   /**
    * Salva o "Saldo inicial guardado" (PUT). O total muda, então o servidor pode
    * ter concluído metas — recarregamos a lista em silêncio para refletir isso.
+   * (A recarga traz o total guardado junto; o PUT já devolveu o novo total.)
    */
   async function salvarSaldoInicial(saldoInicial) {
     const { data } = await api.put('/guardado', { saldoInicial });
@@ -175,7 +183,10 @@ export default function Metas() {
       </div>
 
       {/* Total guardado + saldo inicial editável */}
-      <GuardadoCard guardado={guardado} onSalvarSaldoInicial={salvarSaldoInicial} />
+      {/* Some se a carga falhou (aí aparece o erro com "Tentar de novo" mais abaixo). */}
+      {(guardado || carregando) && (
+        <GuardadoCard guardado={guardado} onSalvarSaldoInicial={salvarSaldoInicial} />
+      )}
 
       {/* Título + valor opcional + botão. Enter dentro de um input envia o <form>. */}
       <form onSubmit={adicionar} className="flex flex-col gap-3 sm:flex-row">
@@ -215,7 +226,18 @@ export default function Metas() {
       {carregando ? (
         <p className="text-muted">Carregando…</p>
       ) : erro ? (
-        <p className="text-negative">{erro}</p>
+        <div className="space-y-2">
+          <p role="alert" className="text-negative">
+            {erro}
+          </p>
+          <button
+            type="button"
+            onClick={() => recarregar()}
+            className="min-h-[44px] rounded border border-border px-4 text-sm text-fg hover:border-accent hover:text-accent"
+          >
+            Tentar de novo
+          </button>
+        </div>
       ) : metas.length === 0 ? (
         /* Estado vazio amigável */
         <div className="rounded border border-border bg-surface p-6 text-center">

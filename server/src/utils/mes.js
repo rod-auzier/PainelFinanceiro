@@ -6,9 +6,10 @@
  * lançamento" é o mês do seu `createdAt`, e filtrar por mês é filtrar um
  * intervalo de `createdAt`.
  *
- * Fuso: os limites do mês são calculados no horário de Brasília (UTC-3, sem
- * horário de verão desde 2019), para que um lançamento feito às 22h do dia 31
- * não "vaze" para o mês seguinte por causa do UTC.
+ * Fuso: tudo é calculado em `America/Fortaleza` (UTC-3 fixo, o mesmo horário de
+ * Brasília, sem horário de verão) e NUNCA no fuso do servidor (que na Vercel é
+ * UTC e viraria o mês 3 horas antes). Assim, um lançamento feito às 22h do dia 31
+ * não "vaza" para o mês seguinte, e "o mês atual" vira à meia-noite daqui.
  */
 
 /**
@@ -25,7 +26,20 @@
  */
 export const MES_INICIAL = '2026-10';
 
-const OFFSET_MS = 3 * 60 * 60 * 1000; // Brasília = UTC-3
+/** Fuso oficial do painel. */
+export const FUSO = 'America/Fortaleza';
+
+// America/Fortaleza é UTC-3 o ano todo (sem horário de verão), então os limites de mês
+// podem ser calculados com um deslocamento fixo — equivalente ao fuso acima.
+const OFFSET_MS = 3 * 60 * 60 * 1000;
+
+// Formatador no fuso do painel (independe do fuso do servidor).
+const formatadorData = new Intl.DateTimeFormat('en-CA', {
+  timeZone: FUSO,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 const FORMATO_MES = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 const doisDigitos = (n) => String(n).padStart(2, '0');
@@ -53,15 +67,32 @@ const partes = (mes) => {
   return { ano, mes: m };
 };
 
-/** "AAAA-MM" do instante `data` no fuso de Brasília (padrão: agora). */
-export function mesDe(data = new Date()) {
-  const local = new Date(data.getTime() - OFFSET_MS);
-  return `${local.getUTCFullYear()}-${doisDigitos(local.getUTCMonth() + 1)}`;
+/** Ano, mês e dia de um instante, vistos no fuso do painel (America/Fortaleza). */
+function dataNoFuso(data) {
+  const p = Object.fromEntries(formatadorData.formatToParts(data).map((x) => [x.type, x.value]));
+  return { ano: p.year, mes: p.month, dia: Number(p.day) };
 }
 
-/** Dia do mês (1–31) do instante `data` no fuso de Brasília. */
+/** "AAAA-MM" em que cai o instante `data`, no fuso do painel. */
+export function mesDe(data) {
+  const { ano, mes } = dataNoFuso(data);
+  return `${ano}-${mes}`;
+}
+
+/**
+ * MÊS ATUAL do painel ("AAAA-MM") — a ÚNICA função que responde "em que mês estamos?".
+ * Usa a data de hoje em America/Fortaleza, não a do servidor. É reutilizada por tudo que
+ * depende do mês corrente: a geração automática de fixos, o "total guardado" (só meses
+ * fechados) e a criação de lançamentos.
+ * @param {Date} [agora]  instante de referência (padrão: agora). Parâmetro para testes.
+ */
+export function mesAtual(agora = new Date()) {
+  return mesDe(agora);
+}
+
+/** Dia do mês (1–31) do instante `data`, no fuso do painel. */
 export function diaDe(data) {
-  return new Date(data.getTime() - OFFSET_MS).getUTCDate();
+  return dataNoFuso(data).dia;
 }
 
 /** Mês anterior a "AAAA-MM" (ex.: "2026-01" → "2025-12"). */
@@ -124,6 +155,6 @@ export function dataNoMes(mes, dia) {
  * - outro mês → mesmo dia de hoje naquele mês (encaixado), ao meio-dia.
  */
 export function createdAtParaMes(mes) {
-  if (!mes || mes === mesDe()) return undefined;
+  if (!mes || mes === mesAtual()) return undefined;
   return dataNoMes(mes, diaDe(new Date()));
 }

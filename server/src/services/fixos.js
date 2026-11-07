@@ -37,6 +37,7 @@ import {
   diaDe,
   filtroDoMes,
   limitesDoMes,
+  mesAtual,
   mesDe,
   mesSeguinte,
 } from '../utils/mes.js';
@@ -103,7 +104,7 @@ async function aguardarConclusao(userId, tipo, mes) {
  * @returns {Promise<number>} quantos lançamentos foram criados NESTA chamada (0 se não
  *          era para gerar, já estava gerado, não havia origem ou outra requisição gerou).
  */
-export async function gerarFixosDoMes(tipo, userId, mes, hoje = mesDe()) {
+export async function gerarFixosDoMes(tipo, userId, mes, hoje = mesAtual()) {
   // MES_INICIAL não tem origem (nada antes dele); meses futuros não geram.
   if (mes <= MES_INICIAL || mes > hoje) return 0;
 
@@ -168,7 +169,7 @@ export async function gerarFixosDoMes(tipo, userId, mes, hoje = mesDe()) {
  * Gera os fixos de receitas E despesas para um mês (o que a abertura do mês dispara).
  * @returns {Promise<{ receitas: number, despesas: number, total: number }>}
  */
-export async function gerarFixosDoMesTodos(userId, mes, hoje = mesDe()) {
+export async function gerarFixosDoMesTodos(userId, mes, hoje = mesAtual()) {
   const receitas = await gerarFixosDoMes('receita', userId, mes, hoje);
   const despesas = await gerarFixosDoMes('despesa', userId, mes, hoje);
   return { receitas, despesas, total: receitas + despesas };
@@ -182,7 +183,7 @@ export async function gerarFixosDoMesTodos(userId, mes, hoje = mesDe()) {
  * @param {string} userId
  * @param {string} [hoje] mês atual "AAAA-MM" (padrão: agora). Parâmetro para testes.
  */
-export async function garantirFixosAteMesAtual(userId, hoje = mesDe()) {
+export async function garantirFixosAteMesAtual(userId, hoje = mesAtual()) {
   for (let mes = mesSeguinte(MES_INICIAL); mes <= hoje; mes = mesSeguinte(mes)) {
     await gerarFixosDoMesTodos(userId, mes, hoje);
   }

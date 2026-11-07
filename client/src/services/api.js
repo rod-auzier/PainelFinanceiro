@@ -10,6 +10,9 @@ import axios from 'axios';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
+  // Sem timeout, uma requisição que nunca responde deixaria a tela em "Carregando…" para
+  // sempre. Com ele, a chamada falha depois de 20 s e a tela mostra o erro + "Tentar de novo".
+  timeout: 20000,
 });
 
 api.interceptors.request.use((config) => {
