@@ -1,24 +1,28 @@
 /*
  * ============================================================================
- * TOKENS DE COR — TEMA ESCURO  (fonte ÚNICA de verdade)
+ * TOKENS DE COR — TEMA ESCURO "GRAFITE PROFUNDO"  (fonte ÚNICA de verdade)
  * ============================================================================
- * Todas as cores do app são definidas aqui, uma única vez, como CSS custom
- * properties. O `tailwind.config.js` só REFERENCIA estas variáveis
- * (ex.: a classe `bg-surface` vira `background-color: var(--color-surface)`).
+ * TODAS as cores do app vivem aqui, definidas uma única vez como CSS custom
+ * properties no bloco `:root` logo abaixo. O `tailwind.config.js` só REFERENCIA
+ * estas variáveis (ex.: a classe `bg-surface` vira `background-color:
+ * var(--color-surface)`) e nenhum componente tem hex "hardcoded". Até a rosca do
+ * Resumo e o `theme-color` do navegador seguem estes valores.
  *
- * Para reajustar o tema no futuro, edite SOMENTE este bloco `:root` —
- * nenhum componente tem cor "hardcoded".
+ * Para reajustar o tema: edite SOMENTE este bloco (e, se mudar o fundo, o
+ * `theme-color` em client/index.html e as cores em client/public/manifest.json,
+ * que são lidos pelo navegador/celular e não podem usar variáveis CSS).
  *
  *   Variável            Hex        Papel
  *   -----------------   --------   ------------------------------------------------
- *   --color-bg          #14181C    Fundo da aplicação (body e área de conteúdo).
- *   --color-surface     #1C2227    Superfícies elevadas: cards, inputs, sidebar,
+ *   --color-bg          #0A0C0F    Fundo da aplicação (body e área de conteúdo).
+ *   --color-surface     #111418    Superfícies elevadas: cards, inputs, sidebar,
  *                                  cabeçalho/rodapé de tabela.
- *   --color-border      #2A3138    Divisórias finas (hairline) entre linhas de
+ *   --color-border      #1E2329    Divisórias finas (hairline) entre linhas de
  *                                  tabela e contorno de cards/inputs.
- *   --color-fg          #E8ECEF    Texto principal (títulos, corpo, valores).
- *   --color-muted       #8B95A1    Texto secundário: labels, legendas,
- *                                  placeholders, estados vazios.
+ *   --color-fg          #E6EAED    Texto principal (títulos, corpo, valores).
+ *   --color-muted       #7A8590    Texto secundário: labels, legendas,
+ *                                  placeholders, estados vazios. (Contraste ≥ 4,5:1
+ *                                  sobre bg e surface — conferido, WCAG AA.)
  *   --color-positive    #3ECF8E    Receitas, superávit e qualquer valor >= 0.
  *   --color-negative    #E2604A    Despesas, déficit e qualquer valor < 0.
  *   --color-accent      #D4A24C    Ações e destaque: botões primários, links,
@@ -28,11 +32,11 @@
 :root {
   color-scheme: dark;
 
-  --color-bg: #14181c;
-  --color-surface: #1c2227;
-  --color-border: #2a3138;
-  --color-fg: #e8ecef;
-  --color-muted: #8b95a1;
+  --color-bg: #0a0c0f;
+  --color-surface: #111418;
+  --color-border: #1e2329;
+  --color-fg: #e6eaed;
+  --color-muted: #7a8590;
   --color-positive: #3ecf8e;
   --color-negative: #e2604a;
   --color-accent: #d4a24c;

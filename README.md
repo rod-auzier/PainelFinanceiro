@@ -215,18 +215,18 @@ apenas se for testar o deploy localmente com `vercel dev`.
 
 ## Tema (design system)
 
-Tema **escuro**, definido por tokens. As 8 cores são declaradas **uma única
+Tema escuro **"Grafite profundo"**, definido por tokens. As 8 cores são declaradas **uma única
 vez** como CSS custom properties em [`client/src/index.css`](client/src/index.css)
 (bloco `:root`, todo comentado) e o [`tailwind.config.js`](client/tailwind.config.js)
 só as **mapeia** para classes utilitárias — nenhum componente tem cor hardcoded.
 
 | Token (`--color-…`) | Hex | Classe Tailwind | Papel |
 |---|---|---|---|
-| `bg`       | `#14181C` | `bg-bg`        | fundo da aplicação |
-| `surface`  | `#1C2227` | `bg-surface`   | cards, inputs, sidebar, cabeçalho de tabela |
-| `border`   | `#2A3138` | `border` / `divide-border` | divisórias finas (hairline) e contornos |
-| `fg`       | `#E8ECEF` | `text-fg`      | texto principal |
-| `muted`    | `#8B95A1` | `text-muted`   | texto secundário, labels, placeholders |
+| `bg`       | `#0A0C0F` | `bg-bg`        | fundo da aplicação |
+| `surface`  | `#111418` | `bg-surface`   | cards, inputs, sidebar, cabeçalho de tabela |
+| `border`   | `#1E2329` | `border` / `divide-border` | divisórias finas (hairline) e contornos |
+| `fg`       | `#E6EAED` | `text-fg`      | texto principal |
+| `muted`    | `#7A8590` | `text-muted`   | texto secundário, labels, placeholders |
 | `positive` | `#3ECF8E` | `text-positive` | receitas, superávit, valores ≥ 0 |
 | `negative` | `#E2604A` | `text-negative` | despesas, déficit, valores < 0 |
 | `accent`   | `#D4A24C` | `bg-accent` / `text-accent` | ações (botões, links, nav ativa) |
@@ -236,9 +236,19 @@ só as **mapeia** para classes utilitárias — nenhum componente tem cor hardco
   `.num` ou o componente [`Money`](client/src/components/Money.jsx)) — dígitos
   de largura fixa alinham as colunas das tabelas. Fontes carregadas no
   [`index.html`](client/index.html).
-- **Estilo das tabelas**: divisórias hairline (`#2A3138`), cantos pouco
+- **Estilo das tabelas**: divisórias hairline (`--color-border`, `#1E2329`), cantos pouco
   arredondados, sem sombras.
-- **Ajustar o tema no futuro**: edite só o bloco `:root` de `index.css`.
+- **Ajustar o tema no futuro**: edite só o bloco `:root` de `index.css`. Exceção:
+  o navegador lê `<meta name="theme-color">` ([`index.html`](client/index.html)) e
+  `theme_color`/`background_color` ([`manifest.json`](client/public/manifest.json))
+  sem acesso às variáveis CSS — se mudar o fundo (`--color-bg`), atualize esses
+  três valores também (hoje `#0A0C0F`).
+- **Cores de dados**: as cores das categorias (rosca do Resumo, bolinhas) são fixas em
+  [`lib/constants.js`](client/src/lib/constants.js) e não fazem parte do tema.
+- **Contraste (WCAG)**: texto secundário `#7A8590` tem 4,9:1 sobre `surface` e 5,2:1 sobre
+  `bg` (mínimo AA = 4,5:1); texto principal 15,3:1; verde 9,3:1, vermelho 5,3:1 e amarelo
+  8,0:1 sobre `surface`. As divisórias e a diferença card/fundo são propositalmente sutis
+  (~1,2:1 e ~1,1:1), como no tema anterior — a separação vem do contorno hairline.
 
 ---
 

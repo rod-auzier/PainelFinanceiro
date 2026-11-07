@@ -15,7 +15,7 @@
  * Responsabilidades:
  *  - checkbox GRANDE: o <label> inteiro (caixa + texto) é a área clicável, com
  *    56px de altura. Marcada → caixa verde (`positive`) com "✓" e texto riscado
- *    em `muted` (#8B95A1); pendente → só contorno e texto normal;
+ *    em `muted` (--color-muted); pendente → só contorno e texto normal;
  *  - acessibilidade: <input type="checkbox"> real oculto só visualmente (`sr-only`);
  *  - META COM VALOR: barra de progresso verde + porcentagem + "R$ X de R$ Y".
  *    Progresso = min(total / valorAlvo, 100%) (nunca abaixo de 0%). Metas sem valor
