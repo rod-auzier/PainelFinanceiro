@@ -245,6 +245,15 @@ só as **mapeia** para classes utilitárias — nenhum componente tem cor hardco
   `theme_color`/`background_color` ([`manifest.json`](client/public/manifest.json))
   sem acesso às variáveis CSS — se mudar o fundo (`--color-bg`), atualize esses
   três valores também (hoje `#0A0C0F`).
+- **Fundo "grade técnica"**: uma grade decorativa de linhas finas (1px, branco a **9%**,
+  quadrados de **52px**) atrás de todas as telas — logadas, Login e Cadastro. Some suavemente
+  nas bordas (máscara radial elíptica, centro em 50%/35%, opaca até ~20% e transparente em ~85%),
+  então aparece mais no centro-topo; como os cards e a sidebar têm fundo sólido, só aparece nas
+  áreas livres. É estática e **fixa** (não rola com a página): um `body::before` com
+  `position: fixed; inset: 0; z-index: 0; pointer-events: none`, com o app (`#root`) acima dela
+  (`z-index: 1`) — sem rolagem horizontal e sem custo ao rolar. No **celular** fica mais discreta
+  (**40px**, **6%**). Ajuste em `client/src/index.css`: variáveis `--grade-tamanho` e
+  `--grade-opacidade` (no `:root`, e no `@media (max-width: 767px)` para o celular).
 - **Cores de dados**: as cores das categorias (rosca do Resumo, bolinhas) são fixas em
   [`lib/constants.js`](client/src/lib/constants.js) e não fazem parte do tema.
 - **Contraste (WCAG)**: texto secundário `#7A8590` tem 4,9:1 sobre `surface` e 5,2:1 sobre

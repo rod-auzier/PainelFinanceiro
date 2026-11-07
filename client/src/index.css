@@ -40,6 +40,20 @@
   --color-positive: #3ecf8e;
   --color-negative: #e2604a;
   --color-accent: #d4a24c;
+
+  /* --- Fundo decorativo "grade técnica" (ver o bloco `body::before` mais abaixo) ---
+     Ajuste a grade SÓ aqui: tamanho do quadrado e opacidade das linhas (branco). */
+  --grade-tamanho: 52px;
+  --grade-opacidade: 0.09;
+}
+
+/* Celular (< 768px, o mesmo breakpoint `md` do Tailwind): grade mais discreta — quadrados
+   menores e linhas mais fracas — para não competir com o conteúdo. */
+@media (max-width: 767px) {
+  :root {
+    --grade-tamanho: 40px;
+    --grade-opacidade: 0.06;
+  }
 }
 
 /* Diretivas do Tailwind (substituídas em build): base = reset, components,
@@ -52,6 +66,40 @@
   body {
     /* Cores e tipografia base vêm dos tokens acima via Tailwind. */
     @apply bg-bg text-fg font-sans antialiased;
+  }
+
+  /* FUNDO "GRADE TÉCNICA" — decorativo e estático, atrás de TODAS as telas (logadas, Login e
+     Cadastro). Fica num pseudo-elemento do <body> para não precisar de nenhum componente:
+       • `position: fixed; inset: 0` — cobre a janela e NÃO rola com a página; por ser fixo,
+         nunca aumenta a largura do documento (sem rolagem horizontal);
+       • `z-index: 0` + `pointer-events: none` — fica atrás e não intercepta cliques/toques;
+       • as linhas são dois `linear-gradient` de 1px (horizontal e vertical) repetidos a cada
+         `--grade-tamanho`, em branco com `--grade-opacidade` (a cor de baixo é o --color-bg do body);
+       • a MÁSCARA radial (elíptica, centro em 50% / 35%) deixa a grade opaca até ~20% e a faz
+         sumir suavemente até ~85%: aparece mais no centro-topo e some nos cantos.
+     Performance: é uma camada estática (sem animação, sem JS); o navegador a pinta uma vez e a
+     compõe na GPU, então rolar a página não a repinta. Os cards têm fundo sólido (bg-surface), por
+     isso a grade só aparece nas áreas livres entre e ao redor deles. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, var(--grade-opacidade)) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, var(--grade-opacidade)) 1px, transparent 1px);
+    background-size: var(--grade-tamanho) var(--grade-tamanho);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 35%, #000 20%, transparent 85%);
+    mask-image: radial-gradient(ellipse at 50% 35%, #000 20%, transparent 85%);
+  }
+
+  /* O app (sidebar, conteúdo, telas de login) forma uma camada ACIMA da grade (z-index 1). Como
+     cria um contexto de empilhamento, os `z-10`/`fixed` internos (menu inferior, cabeçalho do
+     Resumo) continuam funcionando dentro dele. */
+  #root {
+    position: relative;
+    z-index: 1;
   }
 }
 
