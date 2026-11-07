@@ -122,7 +122,7 @@ Finanças/
         ├── models/
         │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), saldoInicial }
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
-        │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, createdAt }
+        │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, createdAt }
         │   └── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
         ├── middlewares/
         │   ├── auth.js         # Valida JWT → injeta req.userId
@@ -320,6 +320,17 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   mobile; total do mês ao fim.
 - **Editar inline** (lápis): campos viram inputs (`Categoria` continua um
   select), *Salvar* / *Cancelar* (PUT `/api/despesas/:id`). **✕** exclui.
+- **Marcar como paga**: cada despesa tem uma **caixa de marcação grande** (44×44px de toque, mesmo
+  estilo das Metas: verde `#3ECF8E` quando marcada). Marcada = texto levemente apagado (o valor
+  continua visível). **Atualização otimista**: marca na hora e sincroniza com
+  `PATCH /api/despesas/:id` (se falhar, desfaz e avisa). Campo `paga` (Boolean, padrão `false`;
+  despesas antigas valem como não pagas). **É só informativo**: total e saldo continuam somando
+  *todas* as despesas. Os **fixos gerados automaticamente não herdam o status** (entram sempre
+  como não pagos) e **editar não altera** o status.
+- **Topo da tela**: "**X de Y pagas**" e o botão **Marcar todas como pagas** (pede confirmação
+  na própria tela; age só nas pendentes do mês selecionado — `PATCH /api/despesas/pagas`).
+- No **Resumo**, o card *Total de despesas* mostra **Pago** e **Falta pagar** (esta em amarelo
+  `#D4A24C`) com uma barrinha fina do que já foi pago. Vale para qualquer mês navegável.
 
 ### Resumo (`/resumo`)
 Tela só **visual**: tudo é calculado com os dados que já existem (nada novo para preencher, nenhuma
@@ -632,9 +643,11 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | DELETE | `/api/receitas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 | GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...], fixosGerados }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante) |
 | POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, mes? }` | `201 { despesa }` · `400`                         |
-| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404`                    |
+| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404` (não altera `paga`) |
+| PATCH  | `/api/despesas/:id`   | sim  | `{ paga: boolean }`                                | `200 { despesa }` · `400` · `404`                    |
+| PATCH  | `/api/despesas/pagas` | sim  | `{ mes: "AAAA-MM" }`                               | `200 { atualizadas }` (marca as pendentes do mês) · `400` |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo, fixosGerados }` (do mês; sem `mes`, de out/2026 em diante) |
+| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo, totalPago, faltaPagar, fixosGerados }` (`totalPago`/`faltaPagar` são só informativos; o saldo usa todas as despesas) (do mês; sem `mes`, de out/2026 em diante) |
 | GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado }` (mais recentes primeiro; já sincronizadas; `guardado` = o mesmo objeto de `GET /api/guardado`, numa chamada só) |
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |

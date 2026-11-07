@@ -9,7 +9,7 @@
 import mongoose from 'mongoose';
 import { Despesa } from '../models/Despesa.js';
 import { gerarFixosDoMes } from '../services/fixos.js';
-import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMesOpcional } from '../utils/mes.js';
+import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMes, lerMesOpcional } from '../utils/mes.js';
 
 /**
  * Lista as despesas do usuário autenticado.
@@ -99,6 +99,7 @@ export async function criarDespesa(req, res) {
  * @param   {number}  req.body.valor        — quantia a pagar, número ≥ 0. Obrigatório.
  * @param   {string}  [req.body.categoria]  — agrupador. Opcional.
  * @param   {boolean} [req.body.recorrente] — "Repete todo mês". Só muda se enviado.
+ *          (O status `paga` NUNCA é alterado por aqui — use PATCH /api/despesas/:id.)
  * @returns {200} `{ despesa: {...} }` — documento já com os novos valores.
  * @returns {400} `{ message }` — `:id` inválido, ou `descricao`/`valor` ausentes/inválidos,
  *               ou `recorrente` não booleano (mesma validação do POST).
@@ -137,6 +138,62 @@ export async function atualizarDespesa(req, res) {
   }
 
   return res.json({ despesa });
+}
+
+/**
+ * Marca ou desmarca UMA despesa como paga (checkbox da lista de Despesas).
+ *
+ * Só mexe no campo `paga`; é puramente informativo (totais e saldo não mudam).
+ *
+ * @route   PATCH /api/despesas/:id
+ * @access  Privado
+ * @param   {string}  req.params.id  — ObjectId da despesa.
+ * @param   {object}  req.body
+ * @param   {boolean} req.body.paga  — `true` = paga, `false` = pendente. Obrigatório e booleano.
+ * @returns {200} `{ despesa: {...} }` — documento já atualizado.
+ * @returns {400} `{ message }` — `:id` inválido ou `paga` ausente/não booleano.
+ * @returns {404} `{ message }` — despesa inexistente OU de outro usuário (filtro por `userId`).
+ */
+export async function atualizarPagamento(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ message: 'id inválido' });
+  }
+  const { paga } = req.body ?? {};
+  if (typeof paga !== 'boolean') {
+    return res.status(400).json({ message: 'paga deve ser true ou false' });
+  }
+
+  const despesa = await Despesa.findOneAndUpdate(
+    { _id: req.params.id, userId: req.userId },
+    { paga },
+    { new: true },
+  );
+  if (!despesa) {
+    return res.status(404).json({ message: 'despesa não encontrada' });
+  }
+  return res.json({ despesa });
+}
+
+/**
+ * Marca como PAGAS todas as despesas AINDA PENDENTES de um mês ("Marcar todas como pagas").
+ * Idempotente: repetir não muda nada. Só toca nas despesas do usuário autenticado.
+ *
+ * @route   PATCH /api/despesas/pagas
+ * @access  Privado
+ * @param   {object} req.body
+ * @param   {string} req.body.mes  — "AAAA-MM" (não anterior a MES_INICIAL). Obrigatório.
+ * @returns {200} `{ atualizadas: number }` — quantas despesas passaram de pendente para paga.
+ * @returns {400} `{ message }` — `mes` ausente, mal formatado ou anterior a MES_INICIAL.
+ */
+export async function marcarTodasPagas(req, res) {
+  const { mes, erro } = lerMes(req.body?.mes);
+  if (erro) return res.status(400).json({ message: erro });
+
+  const resultado = await Despesa.updateMany(
+    { userId: req.userId, paga: { $ne: true }, ...filtroDoMes(mes) }, // `$ne: true` pega também as antigas, sem o campo
+    { paga: true },
+  );
+  return res.json({ atualizadas: resultado.modifiedCount });
 }
 
 /**

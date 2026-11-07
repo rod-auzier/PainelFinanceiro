@@ -42,7 +42,11 @@ import {
   mesSeguinte,
 } from '../utils/mes.js';
 
-/** Como cada tipo de lançamento é identificado e copiado. */
+/**
+ * Como cada tipo de lançamento é identificado e copiado.
+ * `campos` é a lista BRANCA do que vai para o mês novo: o status `paga` da despesa fica de fora
+ * de propósito — o fixo gerado sempre entra como NÃO pago (o default do model).
+ */
 export const CONFIG_FIXOS = {
   despesa: { Model: Despesa, chaves: ['descricao'], campos: ['descricao', 'categoria', 'valor'] },
   receita: { Model: Receita, chaves: ['fonte', 'descricao'], campos: ['fonte', 'descricao', 'valor'] },

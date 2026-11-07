@@ -30,11 +30,19 @@
  *      (mesma regra do formulário de criação) e chamar a API (PUT). Deve
  *      lançar `Error` com mensagem em caso de erro — a mensagem aparece
  *      inline na linha.
+ *  - marca          {{ marcada: (item) => boolean, aoAlternar: (item) => void,
+ *                       rotulo: (item) => string, titulo?: string }}  (opcional)
+ *      Liga uma CAIXA DE MARCAÇÃO grande (<CaixaCheck>) em cada item — usada pelas Despesas
+ *      para "paga". Fica no início do card (mobile) / numa coluna estreita à esquerda (desktop),
+ *      fora da edição inline (editar não muda a marcação). `titulo` é o cabeçalho dessa coluna.
+ *  - apagado        {(item) => boolean}       (opcional) true = item "apagado" (levemente
+ *      esmaecido): todos os campos, MENOS o valor (a última coluna), ficam com opacidade reduzida.
  *  - total          {ReactNode}               total já formatado (ex.: <Money>).
  *  - vazio          {string}                  texto quando não há itens.
  *  - carregando     {boolean} / erro {string}
  */
 import { Fragment, useState } from 'react';
+import CaixaCheck from './CaixaCheck.jsx';
 
 const CAMPO =
   'w-full min-h-[44px] rounded border border-border bg-bg px-2 py-1 text-base text-fg ' +
@@ -113,11 +121,19 @@ export default function ListaLancamentos({
   getId,
   onExcluir,
   aoSalvarEdicao,
+  marca,
+  apagado,
   total,
   vazio,
   carregando,
   erro,
 }) {
+  // Coluna extra da caixa de marcação (só desktop): conta 1 a mais nos `colSpan`.
+  const extra = marca ? 1 : 0;
+  // Classe de "apagado" para uma célula/campo: só os campos de dados, nunca a coluna de valor.
+  const esmaecer = (item, col) =>
+    apagado?.(item) && col !== colunas[colunas.length - 1] ? 'opacity-50' : '';
+
   // Estado da edição inline (uma linha por vez).
   const [editandoId, setEditandoId] = useState(null);
   const [rascunho, setRascunho] = useState({});
@@ -225,9 +241,17 @@ export default function ListaLancamentos({
                 </>
               ) : (
                 <div className="flex items-start justify-between gap-3">
+                  {/* Caixa de marcação grande (44x44) à esquerda do card, quando houver. */}
+                  {marca && (
+                    <CaixaCheck
+                      marcada={marca.marcada(item)}
+                      onChange={() => marca.aoAlternar(item)}
+                      rotulo={marca.rotulo(item)}
+                    />
+                  )}
                   <dl className="min-w-0 flex-1 space-y-2">
                     {colunas.map((col) => (
-                      <div key={col.chave}>
+                      <div key={col.chave} className={esmaecer(item, col)}>
                         <dt className="text-xs uppercase tracking-wide text-muted">{col.label}</dt>
                         <dd className="mt-0.5 break-words text-base">{valorCelula(item, col)}</dd>
                       </div>
@@ -269,6 +293,7 @@ export default function ListaLancamentos({
         <table className="w-full text-sm">
           <thead className="bg-surface text-left text-muted">
             <tr>
+              {marca && <th className="w-14 p-3 font-medium">{marca.titulo}</th>}
               {colunas.map((col) => (
                 <th
                   key={col.chave}
@@ -285,7 +310,7 @@ export default function ListaLancamentos({
           <tbody className="divide-y divide-border">
             {itens.length === 0 && (
               <tr>
-                <td colSpan={colunas.length + 1} className="p-4 text-muted">
+                <td colSpan={colunas.length + 1 + extra} className="p-4 text-muted">
                   {vazio}
                 </td>
               </tr>
@@ -298,6 +323,18 @@ export default function ListaLancamentos({
               return (
                 <Fragment key={id}>
                   <tr>
+                    {/* Coluna da caixa de marcação (escondida durante a edição inline). */}
+                    {marca && (
+                      <td className="w-14 p-1 align-middle">
+                        {!editando && (
+                          <CaixaCheck
+                            marcada={marca.marcada(item)}
+                            onChange={() => marca.aoAlternar(item)}
+                            rotulo={marca.rotulo(item)}
+                          />
+                        )}
+                      </td>
+                    )}
                     {colunas.map((col) => (
                       <td
                         key={col.chave}
@@ -306,6 +343,7 @@ export default function ListaLancamentos({
                           'align-middle',
                           col.alinhar === 'right' ? 'text-right' : '',
                           editando ? '' : (col.classe ?? ''),
+                          editando ? '' : esmaecer(item, col), // item "apagado" (ex.: despesa paga)
                         ].join(' ')}
                       >
                         {editando && col.editor ? (
@@ -347,7 +385,7 @@ export default function ListaLancamentos({
                   {editando && erroEdicao && (
                     <tr>
                       <td
-                        colSpan={colunas.length + 1}
+                        colSpan={colunas.length + 1 + extra}
                         className="px-3 pb-2 text-sm text-negative"
                       >
                         {erroEdicao}
@@ -361,7 +399,7 @@ export default function ListaLancamentos({
 
           <tfoot>
             <tr className="border-t border-border bg-surface">
-              <td className="p-3 font-medium" colSpan={Math.max(1, colunas.length - 1)}>
+              <td className="p-3 font-medium" colSpan={Math.max(1, colunas.length - 1) + extra}>
                 Total
               </td>
               <td className="p-3 text-right">{total}</td>

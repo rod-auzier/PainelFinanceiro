@@ -15,6 +15,13 @@
  *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
  *    ajusta o valor de uma conta fixa copiada (ex.: a conta de luz);
  *  - excluir despesa (DELETE /api/despesas/:id);
+ *  - MARCAR COMO PAGA: caixa de marcação grande em cada despesa (<CaixaCheck>, mesmo estilo das
+ *    Metas; verde quando marcada). Atualização OTIMISTA: marca na hora e sincroniza com
+ *    PATCH /api/despesas/:id (se falhar, desfaz e avisa). Paga = texto levemente apagado, valor
+ *    continua visível. É só informativo: total e saldo contam TODAS as despesas. Fixos gerados
+ *    automaticamente entram sempre como não pagos; editar não muda o status;
+ *  - no topo, "X de Y pagas" e o botão "Marcar todas como pagas" (com confirmação), que age só
+ *    nas pendentes do mês selecionado (PATCH /api/despesas/pagas);
  *  - exibir o total do mês.
  *
  * Responsivo (breakpoints `sm` / `md`, padrões do Tailwind):
@@ -43,7 +50,7 @@ const INPUT =
 export default function Despesas() {
   const [mes, setMes] = useMesSelecionado();
   const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática)
-  const { itens: despesas, carregando, erro, recarregar } = useRecurso(
+  const { itens: despesas, setItens: setDespesas, carregando, erro, recarregar } = useRecurso(
     `/despesas?mes=${mes}`,
     'despesas',
     // A API informa quantos fixos criou ao abrir o mês; só mostramos quando > 0.
@@ -54,11 +61,16 @@ export default function Despesas() {
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState('');
+  const [confirmandoTodas, setConfirmandoTodas] = useState(false); // pergunta "marcar todas?" aberta
+  const [erroPaga, setErroPaga] = useState(''); // falha ao sincronizar o status "paga"
 
   const total = useMemo(
     () => despesas.reduce((soma, d) => soma + Number(d.valor || 0), 0),
     [despesas],
   );
+  // Andamento dos pagamentos do mês (só informativo; não altera o total).
+  const qtdPagas = despesas.filter((d) => d.paga).length;
+  const qtdPendentes = despesas.length - qtdPagas;
 
   function setCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -66,7 +78,41 @@ export default function Despesas() {
 
   function trocarMes(novo) {
     setAviso('');
+    setConfirmandoTodas(false);
+    setErroPaga('');
     setMes(novo);
+  }
+
+  /**
+   * Marca/desmarca UMA despesa como paga — atualização OTIMISTA: a caixa muda na hora e a API
+   * (PATCH /api/despesas/:id) é chamada em seguida; se falhar, volta ao estado anterior.
+   */
+  async function alternarPaga(despesa) {
+    const nova = !despesa.paga;
+    setErroPaga('');
+    setDespesas((lista) => lista.map((d) => (d._id === despesa._id ? { ...d, paga: nova } : d)));
+    try {
+      await api.patch(`/despesas/${despesa._id}`, { paga: nova });
+    } catch {
+      setDespesas((lista) => lista.map((d) => (d._id === despesa._id ? { ...d, paga: !nova } : d)));
+      setErroPaga('Não foi possível atualizar o pagamento. Tente de novo.');
+    }
+  }
+
+  /**
+   * "Marcar todas como pagas" (já confirmado): marca na hora todas as pendentes do mês e chama
+   * PATCH /api/despesas/pagas. Se falhar, recarrega a lista para voltar ao estado real.
+   */
+  async function marcarTodasPagas() {
+    setConfirmandoTodas(false);
+    setErroPaga('');
+    setDespesas((lista) => lista.map((d) => ({ ...d, paga: true })));
+    try {
+      await api.patch('/despesas/pagas', { mes });
+    } catch {
+      setErroPaga('Não foi possível marcar todas como pagas. Tente de novo.');
+      recarregar({ silencioso: true });
+    }
   }
 
   async function adicionar(e) {
@@ -157,6 +203,57 @@ export default function Despesas() {
         <SeletorMes mes={mes} onChange={trocarMes} />
       </div>
 
+      {/* Andamento dos pagamentos: "X de Y pagas" + "Marcar todas como pagas" (com confirmação). */}
+      {despesas.length > 0 && (
+        <div className="space-y-2 rounded border border-border bg-surface p-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <p className="text-sm">
+              <span className="num font-medium">
+                {qtdPagas} de {despesas.length}
+              </span>{' '}
+              <span className="text-muted">pagas</span>
+            </p>
+            {qtdPendentes > 0 && !confirmandoTodas && (
+              <button
+                type="button"
+                onClick={() => setConfirmandoTodas(true)}
+                className="min-h-[44px] rounded border border-border px-3 text-sm text-accent hover:opacity-80"
+              >
+                Marcar todas como pagas
+              </button>
+            )}
+          </div>
+
+          {/* Confirmação inline (melhor no celular que um diálogo do navegador). */}
+          {confirmandoTodas && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+              <span className="flex-1 basis-full sm:basis-auto">
+                Marcar as {qtdPendentes} {qtdPendentes === 1 ? 'despesa pendente' : 'despesas pendentes'} deste mês como pagas?
+              </span>
+              <button
+                type="button"
+                onClick={marcarTodasPagas}
+                className="min-h-[44px] flex-1 rounded bg-accent px-3 font-medium text-bg hover:opacity-90 sm:flex-none"
+              >
+                Confirmar
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmandoTodas(false)}
+                className="min-h-[44px] flex-1 rounded border border-border px-3 text-muted hover:text-fg sm:flex-none"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+          {erroPaga && (
+            <p role="alert" className="text-sm text-negative">
+              {erroPaga}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm`. */}
       <form
         onSubmit={adicionar}
@@ -224,6 +321,14 @@ export default function Despesas() {
         getId={(d) => d._id}
         onExcluir={excluir}
         aoSalvarEdicao={salvarEdicao}
+        // Caixa "paga" em cada despesa; paga = texto apagado (o valor continua visível).
+        marca={{
+          marcada: (d) => Boolean(d.paga),
+          aoAlternar: alternarPaga,
+          rotulo: (d) => (d.paga ? `Desmarcar ${d.descricao} como paga` : `Marcar ${d.descricao} como paga`),
+          titulo: 'Paga',
+        }}
+        apagado={(d) => Boolean(d.paga)}
         total={<Money value={total} tone="negative" className="font-medium" />}
         vazio="Nenhuma despesa neste mês."
         carregando={carregando}

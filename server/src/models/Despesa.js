@@ -10,6 +10,11 @@
  *  - valor      : quantia a pagar, em número. Obrigatório e não-negativo.
  *  - recorrente : lançamento FIXO que se repete todo mês (checkbox "Repete todo mês").
  *                  Padrão `false`. Só os recorrentes entram em "Copiar fixos do mês anterior".
+ *  - paga       : a despesa já foi PAGA? (checkbox na lista de Despesas). Padrão `false` — as
+ *                  despesas que já existiam (sem o campo) valem como não pagas. É só INFORMATIVO:
+ *                  os totais e o saldo continuam somando TODAS as despesas, pagas ou não. Os fixos
+ *                  gerados automaticamente NÃO herdam o status (entram sempre como não pagos) e a
+ *                  edição (PUT) não o altera — só PATCH /api/despesas/:id (e o "marcar todas").
  *  - createdAt  : data de registro da despesa. Gerada automaticamente pelo
  *                 `timestamps` do Mongoose (que também cria `updatedAt`).
  */
@@ -39,6 +44,10 @@ const despesaSchema = new mongoose.Schema(
       min: [0, 'valor não pode ser negativo'],
     },
     recorrente: {
+      type: Boolean,
+      default: false,
+    },
+    paga: {
       type: Boolean,
       default: false,
     },

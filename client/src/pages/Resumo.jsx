@@ -20,6 +20,9 @@
  *    5 maiores despesas;
  *  - celular: tudo em UMA coluna, sem rolagem horizontal.
  *
+ * No card de despesas, "Pago / Falta pagar" + barra fina (campos `totalPago` e `faltaPagar` de
+ * GET /api/resumo; só informativo, o saldo usa todas as despesas).
+ *
  * Componentes: ResumoSaldoCard, ResumoTotalCard, CategoriasDonut, MaioresDespesas.
  * Aviso discreto "N fixos adicionados" quando o servidor gerou os fixos do mês ao abri-lo.
  *
@@ -149,6 +152,8 @@ export default function Resumo() {
             valor={resumo.totalDespesas}
             anterior={anterior ? anterior.totalDespesas : null}
             nomeAnterior={nomeAnterior}
+            // Pago / falta pagar (informativo; o total acima continua somando TODAS as despesas).
+            pagamento={{ pago: resumo.totalPago ?? 0, faltaPagar: resumo.faltaPagar ?? resumo.totalDespesas }}
           />
         </div>
       </div>

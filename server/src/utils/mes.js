@@ -62,6 +62,17 @@ export function lerMesOpcional(valor) {
   return { mes: valor };
 }
 
+/**
+ * Lê o parâmetro `mes` OBRIGATÓRIO (ex.: o body do "marcar todas como pagas").
+ * Mesmas regras de `lerMesOpcional`, mas ausente/vazio também é erro.
+ * @param   {unknown} valor
+ * @returns {{ mes?: string, erro?: string }}
+ */
+export function lerMes(valor) {
+  if (valor === undefined || valor === null || valor === '') return { erro: 'mes é obrigatório (AAAA-MM)' };
+  return lerMesOpcional(valor);
+}
+
 const partes = (mes) => {
   const [ano, m] = mes.split('-').map(Number);
   return { ano, mes: m };

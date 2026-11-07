@@ -11,6 +11,11 @@
  *             compara meses FECHADOS) ou falha ao carregar. Sem comparação, o card não mostra
  *             linha alguma e o conteúdo fica centralizado na vertical (sem espaço sobrando).
  *  - nomeAnterior {string}             nome do mês anterior, ex.: "outubro" (para "vs outubro").
+ *  - pagamento {{ pago: number, faltaPagar: number } | undefined}  só no card de DESPESAS:
+ *             quanto já foi pago e quanto falta pagar (despesas marcadas como pagas). Mostra duas
+ *             linhas discretas ("Pago" e "Falta pagar", esta na cor de destaque) e uma barrinha
+ *             fina com a fração já paga. Informativo: o total e o saldo contam TODAS as despesas.
+ *             Sem despesas no mês, não aparece.
  *
  * Comparação ("▲ 12% vs outubro"): só aparece quando dá para calcular (o mês anterior existe e
  * não foi zero). A COR diz se foi bom ou ruim: para receita, subir é bom (verde) e cair é ruim
@@ -28,7 +33,7 @@ const Seta = ({ d }) => (
 const ICONE_ENTRADA = 'M17 7 7 17M17 17H7V7'; // seta ↙ (dinheiro entrando)
 const ICONE_SAIDA = 'M7 17 17 7M7 7h10v10'; // seta ↗ (dinheiro saindo)
 
-export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior }) {
+export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior, pagamento }) {
   const receita = tipo === 'receita';
   const v = anterior == null ? null : variacao(valor, anterior);
   const temPercentual = v && v.percentual !== null;
@@ -72,6 +77,33 @@ export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior })
             </>
           )}
         </p>
+      )}
+
+      {/* Pagamentos (só despesas): "Pago", "Falta pagar" e barra fina do que já foi pago. */}
+      {pagamento && valor > 0 && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex items-baseline justify-between gap-3 text-xs text-muted">
+            <span>Pago</span>
+            <Money value={pagamento.pago} className="text-fg" />
+          </div>
+          <div className="mt-1 flex items-baseline justify-between gap-3 text-xs text-muted">
+            <span>Falta pagar</span>
+            <Money value={pagamento.faltaPagar} className="text-accent" />
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Despesas já pagas"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(Math.min(pagamento.pago / valor, 1) * 100)}
+            className="mt-2 h-1 w-full overflow-hidden rounded-full bg-border"
+          >
+            <div
+              className="h-full rounded-full bg-positive transition-[width] duration-500"
+              style={{ width: `${Math.max(0, Math.min(pagamento.pago / valor, 1)) * 100}%` }}
+            />
+          </div>
+        </div>
       )}
     </section>
   );

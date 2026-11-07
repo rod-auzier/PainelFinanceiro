@@ -36,6 +36,21 @@ export function somarValor(Model, userId, mes) {
 }
 
 /**
+ * Soma o `valor` só das DESPESAS PAGAS (`paga: true`) de um mês (ou de MES_INICIAL em diante,
+ * sem `mes`). Informativo: alimenta o "Pago / Falta pagar" do Resumo; o total e o saldo
+ * continuam somando TODAS as despesas. Despesas antigas, sem o campo `paga`, não casam com
+ * `paga: true` — contam como pendentes.
+ *
+ * @param   {import('mongoose').Model} Model  — `Despesa`
+ * @param   {string} userId                   — isolamento por usuário
+ * @param   {string} [mes]                    — "AAAA-MM"
+ * @returns {Promise<number>}
+ */
+export function somarPagas(Model, userId, mes) {
+  return somarComFiltro(Model, userId, { paga: true, ...(mes ? filtroDoMes(mes) : filtroDesdeInicio()) });
+}
+
+/**
  * Soma só os MESES FECHADOS: de MES_INICIAL até o mês ANTERIOR ao mês atual. O mês
  * atual (em andamento) e meses futuros NÃO entram. Ex.: hoje em 07/11/2026 → só outubro;
  * novembro passa a entrar em 01/12/2026.
