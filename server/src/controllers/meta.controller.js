@@ -4,9 +4,16 @@
  * Como nas demais rotas protegidas, toda query é filtrada por `req.userId`
  * (injetado pelo middleware `authRequired`): um usuário nunca lê, altera
  * nem apaga metas de outro.
+ *
+ * Metas podem ter um `valorAlvo` (R$). Nesse caso, quando o TOTAL GUARDADO
+ * (saldo inicial + receitas − despesas, ver services/guardado.js) atinge o
+ * alvo, a meta é marcada como concluída automaticamente. Essa sincronização
+ * roda ao listar, criar e atualizar metas, então as respostas já refletem o
+ * estado atual.
  */
 import mongoose from 'mongoose';
 import { Meta, TITULO_MAX } from '../models/Meta.js';
+import { calcularESincronizar } from '../services/guardado.js';
 
 /**
  * Valida e normaliza um título vindo do body.
@@ -23,43 +30,74 @@ function validarTitulo(valor) {
 }
 
 /**
- * Lista as metas do usuário autenticado.
+ * Valida o `valorAlvo` vindo do body (opcional).
+ * @param   {unknown} valor  número > 0, `null` (= sem valor) ou `undefined` (= não enviado)
+ * @returns {{ valorAlvo?: number|null, erro?: string }}  `valorAlvo` fica `undefined` se não enviado.
+ */
+function validarValorAlvo(valor) {
+  if (valor === undefined) return {};
+  if (valor === null) return { valorAlvo: null };
+  if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0) {
+    return { erro: 'valorAlvo deve ser um número maior que zero (ou null para remover)' };
+  }
+  return { valorAlvo: Math.round(valor * 100) / 100 };
+}
+
+/**
+ * Lista as metas do usuário autenticado (já sincronizadas com o total guardado).
  *
  * @route   GET /api/metas
  * @access  Privado — header `Authorization: Bearer <token>`
  * @param   {import('express').Request}  req  — usa `req.userId`; ignora body e query
  * @param   {import('express').Response} res
- * @returns {200} `{ metas: Array<{ _id, userId, titulo, concluida, createdAt, updatedAt }> }`
- *               ordenado por `createdAt` (mais recentes primeiro). A separação
- *               pendentes/concluídas é feita no frontend.
+ * @returns {200} `{ metas: Array<{ _id, userId, titulo, concluida, valorAlvo, alvoAtingido, createdAt, updatedAt }> }`
+ *               ordenado por `createdAt` (mais recentes primeiro). `valorAlvo` é `null` nas metas
+ *               sem valor. A separação pendentes/concluídas é feita no frontend.
  */
 export async function listarMetas(req, res) {
+  await calcularESincronizar(req.userId); // conclui automaticamente as metas cujo alvo foi atingido
   const metas = await Meta.find({ userId: req.userId }).sort({ createdAt: -1 });
   res.json({ metas });
 }
 
 /**
- * Cria uma meta para o usuário autenticado (nasce pendente).
+ * Cria uma meta para o usuário autenticado (nasce pendente — a menos que o
+ * total guardado já cubra o `valorAlvo`, caso em que é concluída na hora).
  *
  * @route   POST /api/metas
  * @access  Privado
  * @param   {import('express').Request} req
  * @param   {object} req.body
- * @param   {string} req.body.titulo — texto da meta. Obrigatório, até 200 caracteres.
- * @returns {201} `{ meta: {...} }` — documento criado (`concluida: false`).
- * @returns {400} `{ message }` — `titulo` ausente, vazio ou longo demais.
+ * @param   {string} req.body.titulo       — texto da meta. Obrigatório, até 200 caracteres.
+ * @param   {number} [req.body.valorAlvo]  — valor em R$ a atingir (> 0). Opcional; sem ele a
+ *                                           meta é um item de checklist comum.
+ * @returns {201} `{ meta: {...} }` — documento criado.
+ * @returns {400} `{ message }` — `titulo` ausente/vazio/longo, ou `valorAlvo` inválido.
  */
 export async function criarMeta(req, res) {
   const { titulo, erro } = validarTitulo(req.body?.titulo);
   if (erro) return res.status(400).json({ message: erro });
 
-  const meta = await Meta.create({ userId: req.userId, titulo });
+  const alvo = validarValorAlvo(req.body?.valorAlvo);
+  if (alvo.erro) return res.status(400).json({ message: alvo.erro });
+
+  const criada = await Meta.create({
+    userId: req.userId,
+    titulo,
+    valorAlvo: alvo.valorAlvo ?? null,
+  });
+
+  await calcularESincronizar(req.userId);
+  const meta = await Meta.findById(criada._id); // relê: pode ter sido concluída automaticamente
   return res.status(201).json({ meta });
 }
 
 /**
  * Atualiza parcialmente uma meta do usuário autenticado: marca/desmarca
- * como concluída e/ou renomeia. Só os campos enviados são alterados.
+ * como concluída, renomeia e/ou altera o valor. Só os campos enviados mudam.
+ *
+ * Marcar/desmarcar `concluida` à mão é sempre permitido — a conclusão
+ * automática só dispara quando o total cruza o alvo (ver services/guardado.js).
  *
  * @route   PATCH /api/metas/:id
  * @access  Privado
@@ -68,9 +106,11 @@ export async function criarMeta(req, res) {
  * @param   {object}  req.body
  * @param   {boolean} [req.body.concluida]     — novo estado do checkbox (booleano de verdade).
  * @param   {string}  [req.body.titulo]        — novo texto (não vazio, até 200 caracteres).
- * @returns {200} `{ meta: {...} }` — documento já atualizado.
+ * @param   {number|null} [req.body.valorAlvo] — novo valor alvo (> 0) ou `null` para remover.
+ *                                               Mudar o valor re-arma a conclusão automática.
+ * @returns {200} `{ meta: {...} }` — documento já atualizado (e sincronizado).
  * @returns {400} `{ message }` — `:id` inválido, nenhum campo enviado, `concluida`
- *               não booleano ou `titulo` inválido.
+ *               não booleano, `titulo` ou `valorAlvo` inválidos.
  * @returns {404} `{ message }` — meta inexistente OU de outro usuário.
  */
 export async function atualizarMeta(req, res) {
@@ -78,7 +118,7 @@ export async function atualizarMeta(req, res) {
     return res.status(400).json({ message: 'id inválido' });
   }
 
-  const { titulo, concluida } = req.body ?? {};
+  const { titulo, concluida, valorAlvo } = req.body ?? {};
   const alteracoes = {};
 
   if (titulo !== undefined) {
@@ -94,21 +134,29 @@ export async function atualizarMeta(req, res) {
     alteracoes.concluida = concluida;
   }
 
-  if (Object.keys(alteracoes).length === 0) {
-    return res.status(400).json({ message: 'informe titulo e/ou concluida' });
+  const alvo = validarValorAlvo(valorAlvo);
+  if (alvo.erro) return res.status(400).json({ message: alvo.erro });
+
+  if (Object.keys(alteracoes).length === 0 && alvo.valorAlvo === undefined) {
+    return res.status(400).json({ message: 'informe titulo, concluida e/ou valorAlvo' });
   }
 
-  const meta = await Meta.findOneAndUpdate(
-    { _id: req.params.id, userId: req.userId },
-    alteracoes,
-    { new: true, runValidators: true }, // `new`: devolve já atualizado
-  );
-
+  // Filtro por userId: meta de outro usuário não é encontrada (404).
+  const meta = await Meta.findOne({ _id: req.params.id, userId: req.userId });
   if (!meta) {
     return res.status(404).json({ message: 'meta não encontrada' });
   }
 
-  return res.json({ meta });
+  meta.set(alteracoes);
+  if (alvo.valorAlvo !== undefined && alvo.valorAlvo !== meta.valorAlvo) {
+    meta.valorAlvo = alvo.valorAlvo;
+    meta.alvoAtingido = false; // valor mudou: reavalia a conclusão automática
+  }
+  await meta.save(); // roda os validadores do schema
+
+  await calcularESincronizar(req.userId);
+  const atualizada = await Meta.findById(meta._id); // relê: pode ter sido concluída automaticamente
+  return res.json({ meta: atualizada });
 }
 
 /**

@@ -92,7 +92,8 @@ Finanças/
 │       │   ├── AuthForm.jsx                 # form e-mail+senha (Login e Registro)
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
 │       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
-│       │   ├── MetaItem.jsx                 # linha de meta: checkbox grande + título + lixeira
+│       │   ├── GuardadoCard.jsx             # "Total guardado" + campo Saldo inicial guardado
+│       │   ├── MetaItem.jsx                 # meta: checkbox grande, barra de progresso, editar, lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
 │       │   ├── SeletorMes.jsx               # ‹ mês › — navegação entre meses (Receitas/Despesas/Resumo)
 │       │   ├── SummaryCard.jsx              # cartão de valor agregado (size 'hero' | 'default')
@@ -103,7 +104,7 @@ Finanças/
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
 │           ├── Despesas.jsx    # Formulário + tabela + total de despesas
 │           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
-│           └── Metas.jsx       # Lista de metas com checkbox (atualização otimista)
+│           └── Metas.jsx       # Total guardado + metas com valor/progresso (atualização otimista)
 │
 └── server/                     # Backend (Node.js + Express + Mongoose)
     ├── package.json
@@ -116,10 +117,10 @@ Finanças/
         │   ├── env.js          # Lê e valida variáveis de ambiente
         │   └── db.js           # Conexão Mongoose cacheada (serverless-safe)
         ├── models/
-        │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs) }
+        │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), saldoInicial }
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
         │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, createdAt }
-        │   └── Meta.js         # { userId, titulo, concluida (default false), createdAt }
+        │   └── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
         ├── middlewares/
         │   ├── auth.js         # Valida JWT → injeta req.userId
         │   └── errorHandler.js # 404 + handler de erros padronizado
@@ -127,20 +128,24 @@ Finanças/
         │   ├── asyncHandler.js # Encaminha erros de handlers async ao errorHandler
         │   └── mes.js          # mês "AAAA-MM": limites no fuso de Brasília, filtro por createdAt
         ├── services/
-        │   └── fixos.js        # copiar fixos (recorrentes) do mês anterior, sem duplicar
+        │   ├── fixos.js        # copiar fixos (recorrentes) do mês anterior, sem duplicar
+│   ├── totais.js       # somarValor: soma de receitas/despesas (aggregation)
+│   └── guardado.js     # total guardado + conclusão automática das metas
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
         │   ├── despesa.controller.js  # listar, criar, atualizar, remover (por userId)
         │   ├── resumo.controller.js   # agrega totais (aggregation MongoDB)
-        │   └── meta.controller.js     # listar, criar, atualizar (PATCH), remover (por userId)
+        │   ├── meta.controller.js     # listar, criar, atualizar (PATCH), remover (por userId)
+│   └── guardado.controller.js # total guardado e saldo inicial
         └── routes/
             ├── index.js           # Agrupa as rotas sob /api (+ /health)
             ├── auth.routes.js     # /api/register, /api/login, /api/me
             ├── receita.routes.js  # /api/receitas  (protegida)
             ├── despesa.routes.js  # /api/despesas  (protegida)
             ├── resumo.routes.js   # /api/resumo    (protegida)
-            └── meta.routes.js     # /api/metas     (protegida)
+            ├── meta.routes.js     # /api/metas     (protegida)
+└── guardado.routes.js # /api/guardado  (protegida)
 ```
 
 ---
@@ -324,18 +329,38 @@ aggregation); o gráfico é montado no cliente a partir de `GET /api/despesas?me
 > continuam devolvendo/somando todos os meses.
 
 ### Metas (`/metas`)
-Lista de objetivos pessoais com checkbox ("quadradinho") para marcar quando concluir.
-- **Adicionar**: digite no campo e clique em *Adicionar* — ou aperte **Enter**.
+Objetivos pessoais com checkbox ("quadradinho") e, opcionalmente, um **valor** que
+vira barra de progresso.
+
+**Total guardado** (card no topo)
+- Fórmula: **saldo inicial guardado + (receitas − despesas de TODOS os meses)**.
+- O **Saldo inicial guardado** é um único número por usuário, editável ali mesmo
+  (*Salvar saldo*): use-o para acertar o que você já tinha guardado antes de usar o
+  painel. Ao salvar, as metas são reavaliadas.
+
+**Metas**
+- **Adicionar**: título + **Valor (R$) opcional** — botão *Adicionar* ou **Enter**.
+  Sem valor, a meta é um checklist comum.
+- **Meta com valor**: barra de progresso **verde**, porcentagem e "R$ X de R$ Y".
+  Progresso = `min(total guardado ÷ valor, 100%)`.
+- **Conclusão automática**: quando o total guardado atinge o valor, a meta é marcada
+  como concluída sozinha. Você continua podendo marcar/desmarcar à mão — se
+  desmarcar uma meta que já foi concluída automaticamente, ela **não** é remarcada
+  (a conclusão automática só dispara quando o total *cruza* o valor; se ele cair
+  abaixo e voltar a subir, dispara de novo).
+- **Editar** (lápis): título e valor viram inputs (*Salvar* / *Cancelar*, `PATCH`).
+  Serve para dar valor às metas que você já tinha ("5 mil", "10 mil", "20 mil").
+  Valor em branco = meta sem valor. Mudar o valor reavalia a conclusão automática.
 - **Marcar como concluída**: toque no quadradinho (ou no texto). A caixa fica
   **verde** e o texto **riscado em cinza**. A mudança aparece na hora
-  (**atualização otimista**) e é sincronizada com a API (`PATCH /api/metas/:id`);
-  se a API falhar, volta ao estado anterior e mostra o erro. Desmarcar funciona igual.
-- **Excluir**: ícone de **lixeira** na própria meta (`DELETE /api/metas/:id`).
-- **Contador** no topo: "X de Y concluídas".
-- **Ordem**: pendentes primeiro; concluídas embaixo, sob o rótulo "Concluídas".
-- Sem metas, mostra uma mensagem amigável incentivando a criar a primeira.
-O checkbox e a lixeira têm áreas de toque ≥ 44px; a linha inteira (caixa + texto)
-é clicável (56px de altura).
+  (**atualização otimista**) e é sincronizada com a API; se a API falhar, volta ao
+  estado anterior e mostra o erro.
+- **Excluir**: ícone de **lixeira** (`DELETE /api/metas/:id`).
+- **Contador** no topo: "X de Y concluídas". **Ordem**: pendentes primeiro; concluídas
+  embaixo, sob o rótulo "Concluídas". Sem metas, mensagem amigável.
+
+O checkbox, o lápis e a lixeira têm áreas de toque ≥ 44px; a linha inteira (caixa +
+texto) é clicável (56px). Valores em fonte mono tabular, tema escuro e responsivo.
 
 ---
 
@@ -491,10 +516,12 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404`                    |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 | GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo }` (do mês; sem `mes`, todos) |
-| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...] }` (mais recentes primeiro)      |
-| POST   | `/api/metas`          | sim  | `{ titulo }`                                       | `201 { meta }` · `400`                               |
-| PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo? }` (ao menos um)            | `200 { meta }` · `400` · `404`                       |
+| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...] }` (mais recentes primeiro; já sincronizadas com o total guardado) |
+| POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
+| PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
+| GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total }`        |
+| PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total }` · `400` |
 
 ---
 

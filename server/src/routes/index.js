@@ -5,6 +5,7 @@ import receitaRoutes from './receita.routes.js';
 import despesaRoutes from './despesa.routes.js';
 import resumoRoutes from './resumo.routes.js';
 import metaRoutes from './meta.routes.js';
+import guardadoRoutes from './guardado.routes.js';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.use('/receitas', receitaRoutes);
 router.use('/despesas', despesaRoutes);
 router.use('/resumo', resumoRoutes);
 router.use('/metas', metaRoutes);
+router.use('/guardado', guardadoRoutes);
 
 export default router;

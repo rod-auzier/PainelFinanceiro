@@ -2,23 +2,30 @@
  * Tela de Metas (rota `/metas`, dentro do <Layout>).
  *
  * Responsabilidades:
- *  - listar as metas do usuário (GET /api/metas via useRecurso);
- *  - criar meta (POST /api/metas) pelo campo de texto — botão "Adicionar" ou
- *    Enter (o campo está dentro de um <form>, então Enter já dispara o submit);
- *  - marcar/desmarcar como concluída (PATCH /api/metas/:id) com ATUALIZAÇÃO
- *    OTIMISTA: o checkbox muda na hora; se a API falhar, volta ao estado
- *    anterior e mostra o erro;
+ *  - mostrar o TOTAL GUARDADO (GET /api/guardado): saldo inicial + (receitas −
+ *    despesas de todos os meses), com o campo "Saldo inicial guardado"
+ *    editável (PUT /api/guardado) — <GuardadoCard>;
+ *  - listar as metas (GET /api/metas via useRecurso). Cada meta pode ter um
+ *    valor (R$); as que têm mostram barra de progresso, porcentagem e
+ *    "R$ X de R$ Y" (progresso = min(total guardado / valor, 100%));
+ *  - criar meta (POST /api/metas) com título e valor OPCIONAL — botão
+ *    "Adicionar" ou Enter (o campo está num <form>);
+ *  - editar título e valor de uma meta existente (PATCH /api/metas/:id) — lápis;
+ *  - marcar/desmarcar como concluída (PATCH) com ATUALIZAÇÃO OTIMISTA: o checkbox
+ *    muda na hora; se a API falhar, volta ao estado anterior e mostra o erro.
+ *    Além disso o SERVIDOR conclui sozinho a meta quando o total atinge o valor
+ *    (sem impedir marcar/desmarcar à mão);
  *  - excluir meta (DELETE /api/metas/:id), também otimista, com reversão;
- *  - mostrar o contador "X de Y concluídas";
- *  - ordenar: pendentes primeiro, concluídas embaixo;
- *  - exibir mensagem amigável quando não há metas.
+ *  - contador "X de Y concluídas"; pendentes primeiro, concluídas embaixo;
+ *  - mensagem amigável quando não há metas.
  *
  * Não recebe props. Autenticação já garantida pelo <Layout>.
  * Cores/tipografia: tokens do tema (ver `src/index.css`).
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
+import GuardadoCard from '../components/GuardadoCard.jsx';
 import MetaItem from '../components/MetaItem.jsx';
 
 // 16px (`text-base`) evita o zoom automático do iOS; 44px = área de toque.
@@ -31,10 +38,26 @@ const TITULO_MAX = 200; // mesmo limite do backend (models/Meta.js)
 const mensagemDeErro = (err, padrao) => err.response?.data?.message || padrao;
 
 export default function Metas() {
-  const { itens: metas, setItens: setMetas, carregando, erro } = useRecurso('/metas', 'metas');
+  const { itens: metas, setItens: setMetas, carregando, erro, recarregar } = useRecurso('/metas', 'metas');
+  const [guardado, setGuardado] = useState(null); // { saldoInicial, saldoAcumulado, total }
   const [titulo, setTitulo] = useState('');
+  const [valor, setValor] = useState('');
   const [adicionando, setAdicionando] = useState(false);
   const [erroAcao, setErroAcao] = useState('');
+
+  /** Busca o total guardado (saldo inicial + receitas − despesas). */
+  const carregarGuardado = useCallback(async () => {
+    try {
+      const { data } = await api.get('/guardado');
+      setGuardado(data);
+    } catch (err) {
+      setErroAcao(mensagemDeErro(err, 'Não foi possível carregar o total guardado.'));
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarGuardado();
+  }, [carregarGuardado]);
 
   // Pendentes primeiro, concluídas embaixo. A ordem dentro de cada grupo
   // segue a da API (mais recentes primeiro).
@@ -46,18 +69,29 @@ export default function Metas() {
     [metas],
   );
 
-  /** Cria a meta. Espera a resposta (precisa do `_id` real) e põe no topo. */
+  /** Cria a meta (valor opcional). Espera a resposta (precisa do `_id` real) e põe no topo. */
   async function adicionar(e) {
     e.preventDefault();
     const texto = titulo.trim();
     if (!texto || adicionando) return;
 
+    const corpo = { titulo: texto };
+    if (valor.trim() !== '') {
+      const n = Number(valor);
+      if (Number.isNaN(n) || n <= 0) {
+        setErroAcao('O valor da meta deve ser maior que zero (ou deixe em branco).');
+        return;
+      }
+      corpo.valorAlvo = n;
+    }
+
     setErroAcao('');
     setAdicionando(true);
     try {
-      const { data } = await api.post('/metas', { titulo: texto });
-      setMetas((atual) => [data.meta, ...atual]);
+      const { data } = await api.post('/metas', corpo);
+      setMetas((atual) => [data.meta, ...atual]); // já vem sincronizada (pode nascer concluída)
       setTitulo('');
+      setValor('');
     } catch (err) {
       setErroAcao(mensagemDeErro(err, 'Não foi possível adicionar a meta.'));
     } finally {
@@ -68,8 +102,7 @@ export default function Metas() {
   /** Marca/desmarca. OTIMISTA: muda na hora e sincroniza com a API. */
   async function alternar(meta) {
     const novo = !meta.concluida;
-    const aplicar = (valor) => (atual) =>
-      atual.map((m) => (m._id === meta._id ? { ...m, concluida: valor } : m));
+    const aplicar = (v) => (atual) => atual.map((m) => (m._id === meta._id ? { ...m, concluida: v } : m));
 
     setErroAcao('');
     setMetas(aplicar(novo)); // 1) atualiza a tela imediatamente
@@ -89,12 +122,43 @@ export default function Metas() {
       await api.delete(`/metas/${meta._id}`);
     } catch (err) {
       // Reinsere na posição certa (mais recentes primeiro, como a API devolve).
-      setMetas((atual) =>
-        [...atual, meta].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-      );
+      setMetas((atual) => [...atual, meta].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
       setErroAcao(mensagemDeErro(err, 'Não foi possível excluir a meta.'));
     }
   }
+
+  /**
+   * Salva título e valor editados (PATCH). Lança Error em caso de falha — o
+   * <MetaItem> mostra a mensagem dentro do item. A resposta já vem sincronizada
+   * (se o total atinge o novo valor, a meta volta concluída).
+   */
+  async function salvarEdicao(meta, { titulo: novoTitulo, valorAlvo }) {
+    const { data } = await api.patch(`/metas/${meta._id}`, { titulo: novoTitulo, valorAlvo });
+    setMetas((atual) => atual.map((m) => (m._id === meta._id ? data.meta : m)));
+  }
+
+  /**
+   * Salva o "Saldo inicial guardado" (PUT). O total muda, então o servidor pode
+   * ter concluído metas — recarregamos a lista em silêncio para refletir isso.
+   */
+  async function salvarSaldoInicial(saldoInicial) {
+    const { data } = await api.put('/guardado', { saldoInicial });
+    setGuardado(data);
+    await recarregar({ silencioso: true });
+  }
+
+  const total = guardado?.total ?? 0;
+
+  const renderItem = (m) => (
+    <MetaItem
+      key={m._id}
+      meta={m}
+      total={total}
+      onAlternar={alternar}
+      onExcluir={excluir}
+      onSalvarEdicao={salvarEdicao}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -110,7 +174,10 @@ export default function Metas() {
         )}
       </div>
 
-      {/* Campo + botão. Enter dentro do input envia o <form>. */}
+      {/* Total guardado + saldo inicial editável */}
+      <GuardadoCard guardado={guardado} onSalvarSaldoInicial={salvarSaldoInicial} />
+
+      {/* Título + valor opcional + botão. Enter dentro de um input envia o <form>. */}
       <form onSubmit={adicionar} className="flex flex-col gap-3 sm:flex-row">
         <input
           value={titulo}
@@ -119,6 +186,17 @@ export default function Metas() {
           maxLength={TITULO_MAX}
           aria-label="Nova meta"
           className={INPUT}
+        />
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          inputMode="decimal"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="Valor (R$)"
+          aria-label="Valor da meta em reais (opcional)"
+          className={`${INPUT} num sm:w-56 sm:shrink-0`}
         />
         <button
           disabled={adicionando || !titulo.trim()}
@@ -143,28 +221,19 @@ export default function Metas() {
         <div className="rounded border border-border bg-surface p-6 text-center">
           <p className="font-medium">Nenhuma meta por aqui ainda</p>
           <p className="mt-1 text-sm text-muted">
-            Escreva sua primeira meta acima e marque o quadradinho quando concluir.
+            Escreva sua primeira meta acima — com um valor, ela ganha barra de progresso — e
+            marque o quadradinho quando concluir.
           </p>
         </div>
       ) : (
         <div className="space-y-6">
-          {pendentes.length > 0 && (
-            <ul className="space-y-2">
-              {pendentes.map((m) => (
-                <MetaItem key={m._id} meta={m} onAlternar={alternar} onExcluir={excluir} />
-              ))}
-            </ul>
-          )}
+          {pendentes.length > 0 && <ul className="space-y-2">{pendentes.map(renderItem)}</ul>}
 
           {/* Concluídas ficam embaixo, sob um rótulo discreto. */}
           {concluidas.length > 0 && (
             <section>
               <h2 className="mb-2 text-xs uppercase tracking-wide text-muted">Concluídas</h2>
-              <ul className="space-y-2">
-                {concluidas.map((m) => (
-                  <MetaItem key={m._id} meta={m} onAlternar={alternar} onExcluir={excluir} />
-                ))}
-              </ul>
+              <ul className="space-y-2">{concluidas.map(renderItem)}</ul>
             </section>
           )}
         </div>

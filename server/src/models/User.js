@@ -8,6 +8,10 @@
  *  - senha  : hash da senha (algoritmo bcrypt, via `bcryptjs`) — NUNCA a
  *             senha em texto puro. `select: false` faz o campo NÃO vir em
  *             consultas por padrão, evitando vazar o hash nas respostas da API.
+ *  - saldoInicial : "Saldo inicial guardado" — quanto o usuário já tinha guardado
+ *             ANTES de usar o painel (um único número por usuário, editável na aba
+ *             Metas). É somado ao resultado (receitas − despesas) para formar o
+ *             "Total guardado". Padrão 0.
  *
  * `timestamps: true` adiciona automaticamente `createdAt` e `updatedAt`.
  *
@@ -34,6 +38,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'senha é obrigatória'],
       select: false,
+    },
+    saldoInicial: {
+      type: Number,
+      default: 0,
+      min: [0, 'saldoInicial não pode ser negativo'],
     },
   },
   { timestamps: true },
