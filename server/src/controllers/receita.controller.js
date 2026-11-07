@@ -9,29 +9,38 @@
  */
 import mongoose from 'mongoose';
 import { Receita } from '../models/Receita.js';
-import { copiarFixos } from '../services/fixos.js';
-import { createdAtParaMes, filtroDoMes, lerMesOpcional } from '../utils/mes.js';
+import { gerarFixosDoMes } from '../services/fixos.js';
+import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMesOpcional } from '../utils/mes.js';
 
 /**
  * Lista as receitas do usuário autenticado.
  *
+ * Ao abrir um mês (`mes` informado) que ainda não foi "gerado", cria ANTES, de forma
+ * automática e idempotente, as receitas recorrentes ("Repete todo mês") do mês de origem
+ * — ver services/fixos.js. Só gera de MES_INICIAL até o mês atual; meses futuros não
+ * geram nada. A resposta diz quantas foram criadas agora, para a tela avisar.
+ *
  * @route   GET /api/receitas?mes=AAAA-MM
  * @access  Privado — header `Authorization: Bearer <token>`
  * @param   {import('express').Request}  req  — usa `req.userId`
- * @param   {string} [req.query.mes]          — "AAAA-MM": só as receitas daquele mês.
- *                                              Sem `mes`, devolve todas.
+ * @param   {string} [req.query.mes]          — "AAAA-MM" (não anterior a MES_INICIAL): só as
+ *                                              receitas daquele mês. Sem `mes`, devolve todas
+ *                                              de MES_INICIAL em diante (sem gerar fixos).
  * @param   {import('express').Response} res
- * @returns {200} `{ receitas: Array<{ _id, userId, fonte, descricao, valor, recorrente, createdAt, updatedAt }> }`
- *               ordenado por `createdAt` (mais recentes primeiro).
- * @returns {400} `{ message }` — `mes` fora do formato AAAA-MM.
+ * @returns {200} `{ receitas: Array<{ _id, userId, ..., valor, recorrente, createdAt, updatedAt }>, fixosGerados: number }`
+ *               ordenado por `createdAt` (mais recentes primeiro). `fixosGerados` = quantas
+ *               receitas fixas foram criadas automaticamente NESTA chamada (0 na maioria).
+ * @returns {400} `{ message }` — `mes` fora do formato AAAA-MM ou anterior a MES_INICIAL.
  */
 export async function listarReceitas(req, res) {
   const { mes, erro } = lerMesOpcional(req.query.mes);
   if (erro) return res.status(400).json({ message: erro });
 
-  const filtro = { userId: req.userId, ...(mes ? filtroDoMes(mes) : {}) };
+  const fixosGerados = mes ? await gerarFixosDoMes('receita', req.userId, mes) : 0;
+
+  const filtro = { userId: req.userId, ...(mes ? filtroDoMes(mes) : filtroDesdeInicio()) };
   const receitas = await Receita.find(filtro).sort({ createdAt: -1 });
-  res.json({ receitas });
+  res.json({ receitas, fixosGerados });
 }
 
 /**
@@ -129,36 +138,6 @@ export async function atualizarReceita(req, res) {
   }
 
   return res.json({ receita });
-}
-
-/**
- * Copia as receitas FIXAS (`recorrente: true`) do mês anterior para o mês
- * escolhido, mantendo fonte, descrição, valor e o dia do mês. Receitas que já
- * existem no mês de destino (mesma fonte + descrição, também recorrentes) NÃO
- * são copiadas de novo — rodar duas vezes não duplica.
- *
- * @route   POST /api/receitas/copiar-fixos
- * @access  Privado
- * @param   {import('express').Request} req
- * @param   {object} req.body
- * @param   {string} req.body.mes — mês de DESTINO, "AAAA-MM". Obrigatório.
- * @returns {200} `{ copiadas, ignoradas, mesOrigem, fixosNaOrigem }` — `ignoradas` = já existiam
- *               no destino; `mesOrigem` = mês anterior de onde se copiou.
- * @returns {400} `{ message }` — `mes` ausente ou mal formatado.
- */
-export async function copiarReceitasFixas(req, res) {
-  const { mes, erro } = lerMesOpcional(req.body?.mes);
-  if (erro || !mes) return res.status(400).json({ message: erro ?? 'mes é obrigatório (AAAA-MM)' });
-
-  const resultado = await copiarFixos({
-    Model: Receita,
-    userId: req.userId,
-    mes,
-    chaves: ['fonte', 'descricao'],
-    campos: ['fonte', 'descricao', 'valor'],
-  });
-
-  return res.json(resultado);
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * GuardadoCard — "Total guardado" da aba Metas + campo "Saldo inicial guardado".
  *
- * Total guardado = saldo inicial + (receitas − despesas de TODOS os meses).
+ * Total guardado = saldo inicial + (receitas − despesas de outubro/2026 em diante).
  * O saldo inicial é um único número por usuário: serve para acertar o que
  * você já tinha guardado antes de começar a usar o painel.
  *
@@ -76,7 +76,7 @@ export default function GuardadoCard({ guardado, onSalvarSaldoInicial }) {
           </dd>
         </div>
         <div className="flex items-baseline justify-between gap-3">
-          <dt>Receitas − despesas (todos os meses)</dt>
+          <dt>Receitas − despesas (desde out/2026)</dt>
           <dd>
             <Money value={guardado.saldoAcumulado} tone="auto" />
           </dd>

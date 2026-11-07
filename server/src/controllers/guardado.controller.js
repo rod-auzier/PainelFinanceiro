@@ -1,8 +1,8 @@
 /**
  * Controller do "Total guardado" (aba Metas).
  *
- * Total guardado = saldo inicial guardado + (receitas − despesas) de todos os
- * meses. O saldo inicial é um único número por usuário (campo do User).
+ * Total guardado = saldo inicial guardado + (receitas − despesas) de
+ * MES_INICIAL (outubro/2026) em diante. O saldo inicial é um único número por usuário (campo do User).
  * Tudo filtrado por `req.userId` (injetado por `authRequired`).
  */
 import { User } from '../models/User.js';
@@ -17,7 +17,7 @@ import { arredondar, calcularESincronizar, calcularGuardado } from '../services/
  * @param   {import('express').Response} res
  * @returns {200} `{ saldoInicial, saldoAcumulado, total }` (valores em R$):
  *   - `saldoInicial`   — o número que o usuário informou (0 por padrão);
- *   - `saldoAcumulado` — receitas − despesas de todos os meses;
+ *   - `saldoAcumulado` — receitas − despesas de MES_INICIAL em diante;
  *   - `total`          — saldoInicial + saldoAcumulado (pode ser negativo).
  */
 export async function obterGuardado(req, res) {

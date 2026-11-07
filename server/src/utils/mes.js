@@ -11,6 +11,20 @@
  * não "vaze" para o mês seguinte por causa do UTC.
  */
 
+/**
+ * MES_INICIAL — primeiro mês em que o painel "existe" ("AAAA-MM").
+ *
+ * É a ÚNICA definição desse limite no backend; tudo o que depende dele usa esta
+ * constante:
+ *  - `lerMesOpcional` recusa meses anteriores (400) em listas, resumo e criação;
+ *  - listas e somas SEM `mes` só enxergam lançamentos desta data em diante
+ *    (`filtroDesdeInicio`), inclusive o "total guardado" das Metas;
+ *  - a geração automática de fixos nunca olha para trás deste mês.
+ * O frontend tem a sua própria cópia em client/src/lib/mes.js — mantenha as duas
+ * iguais ao mudar.
+ */
+export const MES_INICIAL = '2026-10';
+
 const OFFSET_MS = 3 * 60 * 60 * 1000; // Brasília = UTC-3
 const FORMATO_MES = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -24,11 +38,13 @@ export function mesValido(valor) {
 /**
  * Lê o parâmetro opcional `mes` (query ou body).
  * @param   {unknown} valor
- * @returns {{ mes?: string, erro?: string }}  `{}` quando ausente/vazio.
+ * @returns {{ mes?: string, erro?: string }}  `{}` quando ausente/vazio. Erro se o formato
+ *          não for "AAAA-MM" ou se o mês for anterior a MES_INICIAL.
  */
 export function lerMesOpcional(valor) {
   if (valor === undefined || valor === null || valor === '') return {};
   if (!mesValido(valor)) return { erro: 'mes deve estar no formato AAAA-MM' };
+  if (valor < MES_INICIAL) return { erro: `mes não pode ser anterior a ${MES_INICIAL}` };
   return { mes: valor };
 }
 
@@ -55,6 +71,13 @@ export function mesAnterior(mes) {
   return `${d.getUTCFullYear()}-${doisDigitos(d.getUTCMonth() + 1)}`;
 }
 
+/** Mês seguinte a "AAAA-MM" (ex.: "2026-12" → "2027-01"). */
+export function mesSeguinte(mes) {
+  const { ano, mes: m } = partes(mes);
+  const d = new Date(Date.UTC(ano, m, 1));
+  return `${d.getUTCFullYear()}-${doisDigitos(d.getUTCMonth() + 1)}`;
+}
+
 /**
  * Intervalo [inicio, fim) do mês, para usar em `createdAt: { $gte, $lt }`.
  * @param   {string} mes "AAAA-MM" (já validado)
@@ -66,6 +89,15 @@ export function limitesDoMes(mes) {
     inicio: new Date(Date.UTC(ano, m - 1, 1) + OFFSET_MS),
     fim: new Date(Date.UTC(ano, m, 1) + OFFSET_MS),
   };
+}
+
+/**
+ * Filtro Mongo `{ createdAt: { $gte: início de MES_INICIAL } }` — usado quando NÃO
+ * há `mes` na requisição: lançamentos anteriores ao início do painel (lixo de testes,
+ * cópias antigas) nunca aparecem nem entram em soma alguma.
+ */
+export function filtroDesdeInicio() {
+  return { createdAt: { $gte: limitesDoMes(MES_INICIAL).inicio } };
 }
 
 /** Filtro Mongo `{ createdAt: { $gte, $lt } }` para o mês dado. */

@@ -7,9 +7,10 @@
  *  - criar receita (POST /api/receitas) com Fonte, Descrição, Valor e o
  *    checkbox "Repete todo mês" (`recorrente`). A receita é lançada no mês
  *    selecionado (`mes` no body);
- *  - "Copiar fixos do mês anterior" (POST /api/receitas/copiar-fixos): copia
- *    para o mês selecionado as receitas recorrentes do mês anterior, sem
- *    duplicar as que já existem, e avisa quantas foram copiadas;
+ *  - FIXOS AUTOMÁTICOS: ao abrir um mês, o servidor cria sozinho (e sem duplicar) as
+ *    receitas recorrentes ("Repete todo mês") do mês anterior — só até o mês atual; meses
+ *    futuros não geram nada. A tela mostra um aviso discreto com quantas foram
+ *    adicionadas ("N fixos adicionados"); depois é só editar o que mudou;
  *  - editar receita inline (PUT /api/receitas/:id) — a validação em
  *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
  *    ajusta o valor de uma receita fixa copiada;
@@ -27,7 +28,7 @@ import { useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { mensagemCopiaFixos } from '../lib/mes.js';
+import { mensagemFixosGerados } from '../lib/mes.js';
 import Money from '../components/Money.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
@@ -39,15 +40,18 @@ const INPUT =
 
 export default function Receitas() {
   const [mes, setMes] = useMesSelecionado();
+  const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática)
   const { itens: receitas, carregando, erro, recarregar } = useRecurso(
     `/receitas?mes=${mes}`,
     'receitas',
+    // A API informa quantos fixos criou ao abrir o mês; só mostramos quando > 0.
+    (data) => {
+      if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados));
+    },
   );
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState('');
-  const [copiando, setCopiando] = useState(false);
-  const [aviso, setAviso] = useState('');
 
   const total = useMemo(
     () => receitas.reduce((soma, r) => soma + Number(r.valor || 0), 0),
@@ -81,21 +85,6 @@ export default function Receitas() {
       setErroForm(err.response?.data?.message || 'Não foi possível salvar.');
     } finally {
       setSalvando(false);
-    }
-  }
-
-  /** Copia as receitas fixas do mês anterior para o mês selecionado. */
-  async function copiarFixos() {
-    setAviso('');
-    setCopiando(true);
-    try {
-      const { data } = await api.post('/receitas/copiar-fixos', { mes });
-      setAviso(mensagemCopiaFixos(data));
-      await recarregar();
-    } catch (err) {
-      setAviso(err.response?.data?.message || 'Não foi possível copiar os fixos.');
-    } finally {
-      setCopiando(false);
     }
   }
 
@@ -183,7 +172,7 @@ export default function Receitas() {
           onChange={(e) => setCampo('descricao', e.target.value)}
           className={`${INPUT} sm:col-span-2`}
         />
-        {/* Receita fixa: entra em "Copiar fixos do mês anterior". */}
+        {/* Receita fixa: o servidor a cria sozinho nos meses seguintes (ao abri-los). */}
         <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base sm:col-span-2">
           <input
             type="checkbox"
@@ -202,22 +191,12 @@ export default function Receitas() {
         </button>
       </form>
 
-      {/* Copiar fixos do mês anterior + mensagem com o resultado. */}
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={copiarFixos}
-          disabled={copiando}
-          className="min-h-[44px] w-full rounded border border-border px-4 text-sm text-fg hover:border-accent hover:text-accent disabled:opacity-60 sm:w-auto"
-        >
-          {copiando ? 'Copiando…' : 'Copiar fixos do mês anterior'}
-        </button>
-        {aviso && (
-          <p role="status" className="text-sm text-muted">
-            {aviso}
-          </p>
-        )}
-      </div>
+      {/* Aviso discreto da geração automática de fixos (some ao trocar de mês). */}
+      {aviso && (
+        <p role="status" className="text-sm text-muted">
+          {aviso}
+        </p>
+      )}
 
       <ListaLancamentos
         colunas={colunas}

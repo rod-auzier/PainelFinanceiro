@@ -7,10 +7,10 @@
  *  - criar despesa (POST /api/despesas) com Descrição, Categoria, Valor e o
  *    checkbox "Repete todo mês" (`recorrente`). A despesa é lançada no mês
  *    selecionado (`mes` no body). Categoria é um <select> de CATEGORIAS_DESPESA;
- *  - "Copiar fixos do mês anterior" (POST /api/despesas/copiar-fixos): copia
- *    para o mês selecionado as despesas recorrentes do mês anterior (mesma
- *    descrição, categoria e valor), sem duplicar as que já existem, e avisa
- *    quantas foram copiadas;
+ *  - FIXOS AUTOMÁTICOS: ao abrir um mês, o servidor cria sozinho (e sem duplicar) as
+ *    despesas recorrentes ("Repete todo mês") do mês anterior — só até o mês atual; meses
+ *    futuros não geram nada. A tela mostra um aviso discreto com quantas foram
+ *    adicionadas ("N fixos adicionados"); depois é só editar o que mudou;
  *  - editar despesa inline (PUT /api/despesas/:id) — a validação em
  *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
  *    ajusta o valor de uma conta fixa copiada (ex.: a conta de luz);
@@ -28,7 +28,7 @@ import { useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { mensagemCopiaFixos } from '../lib/mes.js';
+import { mensagemFixosGerados } from '../lib/mes.js';
 import { CATEGORIAS_DESPESA } from '../lib/constants.js';
 import Money from '../components/Money.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
@@ -41,15 +41,18 @@ const INPUT =
 
 export default function Despesas() {
   const [mes, setMes] = useMesSelecionado();
+  const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática)
   const { itens: despesas, carregando, erro, recarregar } = useRecurso(
     `/despesas?mes=${mes}`,
     'despesas',
+    // A API informa quantos fixos criou ao abrir o mês; só mostramos quando > 0.
+    (data) => {
+      if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados));
+    },
   );
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState('');
-  const [copiando, setCopiando] = useState(false);
-  const [aviso, setAviso] = useState('');
 
   const total = useMemo(
     () => despesas.reduce((soma, d) => soma + Number(d.valor || 0), 0),
@@ -83,21 +86,6 @@ export default function Despesas() {
       setErroForm(err.response?.data?.message || 'Não foi possível salvar.');
     } finally {
       setSalvando(false);
-    }
-  }
-
-  /** Copia as despesas fixas do mês anterior para o mês selecionado. */
-  async function copiarFixos() {
-    setAviso('');
-    setCopiando(true);
-    try {
-      const { data } = await api.post('/despesas/copiar-fixos', { mes });
-      setAviso(mensagemCopiaFixos(data));
-      await recarregar();
-    } catch (err) {
-      setAviso(err.response?.data?.message || 'Não foi possível copiar os fixos.');
-    } finally {
-      setCopiando(false);
     }
   }
 
@@ -196,7 +184,7 @@ export default function Despesas() {
           className={`${INPUT} num`}
           required
         />
-        {/* Despesa fixa: entra em "Copiar fixos do mês anterior". */}
+        {/* Despesa fixa: o servidor a cria sozinho nos meses seguintes (ao abri-los). */}
         <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base sm:col-span-2">
           <input
             type="checkbox"
@@ -215,22 +203,12 @@ export default function Despesas() {
         </button>
       </form>
 
-      {/* Copiar fixos do mês anterior + mensagem com o resultado. */}
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={copiarFixos}
-          disabled={copiando}
-          className="min-h-[44px] w-full rounded border border-border px-4 text-sm text-fg hover:border-accent hover:text-accent disabled:opacity-60 sm:w-auto"
-        >
-          {copiando ? 'Copiando…' : 'Copiar fixos do mês anterior'}
-        </button>
-        {aviso && (
-          <p role="status" className="text-sm text-muted">
-            {aviso}
-          </p>
-        )}
-      </div>
+      {/* Aviso discreto da geração automática de fixos (some ao trocar de mês). */}
+      {aviso && (
+        <p role="status" className="text-sm text-muted">
+          {aviso}
+        </p>
+      )}
 
       <ListaLancamentos
         colunas={colunas}

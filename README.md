@@ -78,7 +78,7 @@ Finanças/
 │       ├── index.css           # ★ TOKENS DE COR (:root) + base + regras do Recharts
 │       ├── lib/
 │       │   ├── format.js       # brl()
-│       │   ├── mes.js          # helpers de mês (AAAA-MM), rótulos e mensagem da cópia de fixos
+│       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
 │       │   ├── constants.js    # CATEGORIAS_DESPESA + paleta do gráfico
 │       │   └── theme.js        # token('surface') → lê CSS var em runtime (p/ Recharts)
 │       ├── hooks/
@@ -126,11 +126,11 @@ Finanças/
         │   └── errorHandler.js # 404 + handler de erros padronizado
         ├── utils/
         │   ├── asyncHandler.js # Encaminha erros de handlers async ao errorHandler
-        │   └── mes.js          # mês "AAAA-MM": limites no fuso de Brasília, filtro por createdAt
+        │   └── mes.js          # MES_INICIAL + mês "AAAA-MM": limites no fuso de Brasília, filtro por createdAt
         ├── services/
-        │   ├── fixos.js        # copiar fixos (recorrentes) do mês anterior, sem duplicar
-│   ├── totais.js       # somarValor: soma de receitas/despesas (aggregation)
-│   └── guardado.js     # total guardado + conclusão automática das metas
+        │   ├── fixos.js        # geração AUTOMÁTICA dos fixos do mês (idempotente, com marcador único)
+        │   ├── totais.js       # somarValor: soma de receitas/despesas (aggregation, a partir de MES_INICIAL)
+        │   └── guardado.js     # total guardado + conclusão automática das metas
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
@@ -279,31 +279,30 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 - **Formulário**: `Fonte` (obrigatório), `Descrição` (opcional) e `Valor`
   (obrigatório, ≥ 0). *Adicionar receita* salva e a lista recarrega.
 - **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: a lista e o total mostram só
-  o mês escolhido; novas receitas são lançadas nesse mês.
+  o mês escolhido; novas receitas são lançadas nesse mês. A seta "anterior" fica
+  **desabilitada em outubro/2026** (ver [Início do painel](#início-do-painel-e-fixos-automáticos)).
 - **Repete todo mês** (checkbox no formulário): marca a receita como **fixa**
   (aparece como "↻ Todo mês" na lista).
-- **Copiar fixos do mês anterior**: copia para o mês selecionado as receitas
-  fixas do mês anterior (fonte, descrição e valor) e avisa quantas foram
-  copiadas. **Não duplica**: o que já existe no mês (mesma fonte + descrição,
-  também fixa) é ignorado — dá para clicar de novo sem medo.
+- **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as
+  receitas fixas do mês anterior (fonte, descrição e valor) e a tela mostra um
+  aviso discreto, ex.: "↻ 2 fixos adicionados automaticamente".
 - **Lista**: tabela no desktop, cards no mobile; total do mês ao fim.
 - **Editar inline** (lápis): os campos da linha viram inputs ali mesmo, com
   *Salvar* / *Cancelar* (PUT `/api/receitas/:id`) — é por aqui que se ajusta o
-  valor de uma fixa copiada; dá para (des)marcar "Todo mês". **✕** exclui.
+  valor de uma fixa gerada; dá para (des)marcar "Todo mês". **✕** exclui.
 
 ### Despesas (`/despesas`)
 - **Formulário**: `Descrição` (obrigatório), `Categoria` (select fixo:
   Utilidades, Alimentação, Transporte, Saúde, Lazer, Outros) e `Valor`
   (obrigatório, ≥ 0).
 - **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: lista e total do mês escolhido;
-  novas despesas são lançadas nesse mês.
+  novas despesas são lançadas nesse mês. A seta "anterior" fica **desabilitada em
+  outubro/2026**.
 - **Repete todo mês** (checkbox no formulário): marca a despesa como **fixa**
   ("↻ Todo mês" na lista).
-- **Copiar fixos do mês anterior**: copia para o mês selecionado as despesas
-  fixas do mês anterior (descrição, categoria e valor) para você só editar o
-  que mudou (ex.: a conta de luz) e avisa quantas foram copiadas. **Não
-  duplica**: se já existe no mês uma despesa fixa com a mesma descrição, ela é
-  ignorada.
+- **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as
+  despesas fixas do mês anterior (descrição, categoria e valor) para você só editar
+  o que mudou (ex.: a conta de luz), e a tela avisa quantas foram adicionadas.
 - **Lista**: descrição, categoria, fixo e valor; tabela no desktop, cards no
   mobile; total do mês ao fim.
 - **Editar inline** (lápis): campos viram inputs (`Categoria` continua um
@@ -311,7 +310,8 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 
 ### Resumo (`/resumo`)
 - **Seletor de mês** (‹ mês ›) no topo: o resumo e o gráfico são do mês escolhido
-  (o mês selecionado é lembrado ao trocar de aba).
+  (o mês selecionado é lembrado ao trocar de aba; nunca antes de outubro/2026).
+  Abrir o mês aqui também gera os fixos dele e mostra o mesmo aviso discreto.
 - **Saldo Final** em destaque: número grande em fonte monoespaçada, verde se
   ≥ 0 e vermelho se < 0 — é o elemento principal da tela.
 - Logo abaixo, o **indicador** **▲ Superávit** (verde) / **▼ Déficit** (vermelho).
@@ -325,15 +325,62 @@ aggregation); o gráfico é montado no cliente a partir de `GET /api/despesas?me
 
 > **Como o mês funciona:** receitas e despesas só têm a data `createdAt`; o mês de um
 > lançamento é o mês do seu `createdAt` (fuso de Brasília, UTC-3). Ao lançar com outro
-> mês selecionado, o `createdAt` é posicionado nesse mês. Sem `mes`, as rotas
-> continuam devolvendo/somando todos os meses.
+> mês selecionado, o `createdAt` é posicionado nesse mês. Sem `mes`, as rotas listam e
+> somam de outubro/2026 em diante.
+
+### Início do painel e fixos automáticos
+
+**Início do painel (`MES_INICIAL = "2026-10"`)** — o painel existe só de **outubro/2026**
+em diante. A constante vive em um único lugar por lado: `server/src/utils/mes.js` e
+`client/src/lib/mes.js` (mantenha as duas iguais).
+- O seletor de mês bloqueia a seta "anterior" em outubro/2026 (apagada/desabilitada);
+  um mês antigo guardado na sessão é ajustado para outubro/2026.
+- A API recusa (`400`) `?mes=` ou `mes` anteriores a `2026-10`; listas e somas **sem**
+  `mes` só enxergam lançamentos de outubro/2026 em diante.
+- O **total guardado** das Metas considera só lançamentos de outubro/2026 em diante,
+  mais o "Saldo inicial guardado".
+
+**Fixos automáticos (feitos no backend)** — lançamentos com "Repete todo mês" são
+criados sozinhos ao abrir um mês (`GET /api/receitas|despesas?mes=` e `GET /api/resumo?mes=`):
+- copia **descrição, categoria e valor** (receitas: fonte + descrição + valor) e o dia do mês;
+- **só até o mês atual** — meses futuros (navegados só para olhar) não geram nada, e
+  nunca antes de outubro/2026;
+- a origem é o **mês mais recente que tenha fixos** (se você pulou um mês, continua
+  funcionando — ex.: janeiro copia de outubro se nov/dez nunca foram abertos);
+- **nunca duplica**: pula o que já existe no mês (mesma descrição, também recorrente) e, além
+  disso, cada (usuário, tipo, mês) tem um *marcador* com **índice único** (`FixosGerados`):
+  mesmo com a tela aberta duas vezes ou em dois aparelhos ao mesmo tempo, só uma
+  requisição gera — as outras esperam e só leem. Marcador travado há mais de 30 s é recuperado;
+- como cada mês é gerado uma vez, **um fixo apagado não ressuscita** ao reabrir o mês;
+- a resposta traz `fixosGerados` (quantos foram criados na chamada) e a tela mostra um aviso
+  discreto ("N fixos adicionados").
+O "total guardado" também garante a geração de todos os meses até o atual antes de somar.
+
+### Limpeza dos meses anteriores a outubro/2026 (script manual)
+
+Nada é apagado automaticamente. Para remover receitas/despesas **do seu usuário** anteriores a
+01/10/2026 (por exemplo, cópias de fixos feitas em meses antigos), use o script — rode **dentro de
+`server/`** (ele lê a `MONGO_URI` do `.env`):
+
+```bash
+cd server
+npm run limpar:antigos -- --email=voce@exemplo.com              # DRY-RUN: só lista o que seria apagado
+npm run limpar:antigos -- --email=voce@exemplo.com --confirmar  # apaga de verdade
+```
+
+- **Padrão = dry-run**: imprime cada registro (data, descrição, valor) e quantos seriam apagados, e
+  termina com "NADA foi apagado". Só o parâmetro explícito `--confirmar` apaga.
+- Exige `--email` (mexe só nesse usuário); argumento desconhecido aborta.
+- O filtro é sempre `createdAt < 01/10/2026 00:00 (Brasília)`: **registros de outubro/2026 em diante
+  nunca são tocados** (o script mostra quantos serão preservados e confere as contagens depois).
+- Comece sempre pelo dry-run, leia a lista e só então rode com `--confirmar`.
 
 ### Metas (`/metas`)
 Objetivos pessoais com checkbox ("quadradinho") e, opcionalmente, um **valor** que
 vira barra de progresso.
 
 **Total guardado** (card no topo)
-- Fórmula: **saldo inicial guardado + (receitas − despesas de TODOS os meses)**.
+- Fórmula: **saldo inicial guardado + (receitas − despesas de outubro/2026 em diante)**.
 - O **Saldo inicial guardado** é um único número por usuário, editável ali mesmo
   (*Salvar saldo*): use-o para acertar o que você já tinha guardado antes de usar o
   painel. Ao salvar, as metas são reavaliadas.
@@ -505,17 +552,15 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/register`       | não  | `{ email, senha }`                                 | `201 { user, token }` · `400` · `409`                |
 | POST   | `/api/login`          | não  | `{ email, senha }`                                 | `200 { user, token }` · `400` · `401`                |
 | GET    | `/api/me`             | sim  | header `Bearer`                                    | `200 { user }` · `401` · `404`                       |
-| GET    | `/api/receitas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { receitas: [...] }` (do mês; sem `mes`, todas) |
+| GET    | `/api/receitas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { receitas: [...], fixosGerados }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante) |
 | POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao?, recorrente?, mes? }`  | `201 { receita }` · `400`                            |
-| POST   | `/api/receitas/copiar-fixos` | sim | `{ mes }` (mês de destino)                  | `200 { copiadas, ignoradas, mesOrigem, fixosNaOrigem }` · `400` |
 | PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao?, recorrente? }`        | `200 { receita }` · `400` · `404`                    |
 | DELETE | `/api/receitas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...] }` (do mês; sem `mes`, todas) |
+| GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...], fixosGerados }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante) |
 | POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, mes? }` | `201 { despesa }` · `400`                         |
-| POST   | `/api/despesas/copiar-fixos` | sim | `{ mes }` (mês de destino)                  | `200 { copiadas, ignoradas, mesOrigem, fixosNaOrigem }` · `400` |
 | PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404`                    |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo }` (do mês; sem `mes`, todos) |
+| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo, fixosGerados }` (do mês; sem `mes`, de out/2026 em diante) |
 | GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...] }` (mais recentes primeiro; já sincronizadas com o total guardado) |
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |

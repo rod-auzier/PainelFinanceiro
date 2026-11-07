@@ -2,8 +2,11 @@
  * "Total guardado" e conclusão automática das Metas.
  *
  * TOTAL GUARDADO = saldo inicial guardado (campo do usuário)
- *                + soma de todas as receitas
- *                − soma de todas as despesas        (de TODOS os meses)
+ *                + soma das receitas
+ *                − soma das despesas      (de MES_INICIAL em diante; nada anterior conta)
+ *
+ * Antes de somar, garante que os fixos de todos os meses até o mês atual já foram
+ * gerados (services/fixos.js) — senão o total mudaria só depois de abrir cada mês.
  *
  * CONCLUSÃO AUTOMÁTICA: quando o total guardado atinge o `valorAlvo` de uma
  * meta, ela é marcada como concluída sozinha — sem impedir o usuário de
@@ -22,18 +25,21 @@ import { Receita } from '../models/Receita.js';
 import { Despesa } from '../models/Despesa.js';
 import { Meta } from '../models/Meta.js';
 import { User } from '../models/User.js';
+import { garantirFixosAteMesAtual } from './fixos.js';
 import { somarValor } from './totais.js';
 
 /** Arredonda para centavos (evita 4999.999999… em somas de ponto flutuante). */
 export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
 
 /**
- * Calcula o total guardado do usuário.
+ * Calcula o total guardado do usuário (gerando antes os fixos pendentes até o mês atual).
  * @param   {string} userId
  * @returns {Promise<{ saldoInicial: number, saldoAcumulado: number, total: number }>}
- *          `saldoAcumulado` = receitas − despesas (todos os meses); `total` = saldoInicial + saldoAcumulado.
+ *          `saldoAcumulado` = receitas − despesas (de MES_INICIAL em diante); `total` = saldoInicial + saldoAcumulado.
  */
 export async function calcularGuardado(userId) {
+  await garantirFixosAteMesAtual(userId);
+
   const [usuario, receitas, despesas] = await Promise.all([
     User.findById(userId).select('saldoInicial'),
     somarValor(Receita, userId),
