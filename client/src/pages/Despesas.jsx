@@ -2,38 +2,54 @@
  * Tela de Despesas (rota `/despesas`, dentro do <Layout>).
  *
  * Responsabilidades:
- *  - listar as despesas do usuário (GET /api/despesas via useRecurso);
- *  - criar despesa (POST /api/despesas) com Descrição, Categoria e Valor.
- *    Categoria é um <select> limitado a CATEGORIAS_DESPESA;
- *  - editar despesa inline na tabela/card (PUT /api/despesas/:id) — a
- *    validação em `salvarEdicao` repete a do formulário de criação;
+ *  - mostrar as despesas do MÊS selecionado (seletor ‹ mês › no topo →
+ *    GET /api/despesas?mes=AAAA-MM via useRecurso);
+ *  - criar despesa (POST /api/despesas) com Descrição, Categoria, Valor e o
+ *    checkbox "Repete todo mês" (`recorrente`). A despesa é lançada no mês
+ *    selecionado (`mes` no body). Categoria é um <select> de CATEGORIAS_DESPESA;
+ *  - "Copiar fixos do mês anterior" (POST /api/despesas/copiar-fixos): copia
+ *    para o mês selecionado as despesas recorrentes do mês anterior (mesma
+ *    descrição, categoria e valor), sem duplicar as que já existem, e avisa
+ *    quantas foram copiadas;
+ *  - editar despesa inline (PUT /api/despesas/:id) — a validação em
+ *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
+ *    ajusta o valor de uma conta fixa copiada (ex.: a conta de luz);
  *  - excluir despesa (DELETE /api/despesas/:id);
- *  - exibir o total somado.
+ *  - exibir o total do mês.
  *
  * Responsivo (breakpoints `sm` / `md`, padrões do Tailwind):
  *  - formulário: 1 coluna no mobile, 2 colunas a partir de `sm` (640px);
  *  - lista: cards empilhados no mobile, tabela a partir de `md` — via
  *    <ListaLancamentos>.
- * Inputs em `text-base` (16px) para não disparar zoom no iOS; botão com
+ * Inputs em `text-base` (16px) para não disparar zoom no iOS; botões com
  * altura mínima de 44px.
  */
 import { useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
+import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
+import { mensagemCopiaFixos } from '../lib/mes.js';
 import { CATEGORIAS_DESPESA } from '../lib/constants.js';
 import Money from '../components/Money.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
+import SeletorMes from '../components/SeletorMes.jsx';
 
-const FORM_VAZIO = { descricao: '', categoria: 'Outros', valor: '' };
+const FORM_VAZIO = { descricao: '', categoria: 'Outros', valor: '', recorrente: false };
 const INPUT =
   'min-h-[44px] rounded border border-border bg-surface px-3 py-2 text-base text-fg ' +
   'placeholder:text-muted focus:border-accent focus:outline-none';
 
 export default function Despesas() {
-  const { itens: despesas, carregando, erro, recarregar } = useRecurso('/despesas', 'despesas');
+  const [mes, setMes] = useMesSelecionado();
+  const { itens: despesas, carregando, erro, recarregar } = useRecurso(
+    `/despesas?mes=${mes}`,
+    'despesas',
+  );
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState('');
+  const [copiando, setCopiando] = useState(false);
+  const [aviso, setAviso] = useState('');
 
   const total = useMemo(
     () => despesas.reduce((soma, d) => soma + Number(d.valor || 0), 0),
@@ -42,6 +58,11 @@ export default function Despesas() {
 
   function setCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  function trocarMes(novo) {
+    setAviso('');
+    setMes(novo);
   }
 
   async function adicionar(e) {
@@ -53,6 +74,8 @@ export default function Despesas() {
         descricao: form.descricao,
         categoria: form.categoria,
         valor: Number(form.valor),
+        recorrente: form.recorrente,
+        mes, // lança no mês selecionado
       });
       setForm(FORM_VAZIO);
       await recarregar();
@@ -60,6 +83,21 @@ export default function Despesas() {
       setErroForm(err.response?.data?.message || 'Não foi possível salvar.');
     } finally {
       setSalvando(false);
+    }
+  }
+
+  /** Copia as despesas fixas do mês anterior para o mês selecionado. */
+  async function copiarFixos() {
+    setAviso('');
+    setCopiando(true);
+    try {
+      const { data } = await api.post('/despesas/copiar-fixos', { mes });
+      setAviso(mensagemCopiaFixos(data));
+      await recarregar();
+    } catch (err) {
+      setAviso(err.response?.data?.message || 'Não foi possível copiar os fixos.');
+    } finally {
+      setCopiando(false);
     }
   }
 
@@ -85,6 +123,7 @@ export default function Despesas() {
       descricao,
       categoria: rascunho.categoria || 'Outros',
       valor: valorNum,
+      recorrente: Boolean(rascunho.recorrente),
     });
     await recarregar();
   }
@@ -99,6 +138,13 @@ export default function Despesas() {
       opcoes: CATEGORIAS_DESPESA,
     },
     {
+      chave: 'recorrente',
+      label: 'Fixo',
+      classe: 'text-muted',
+      editor: 'checkbox',
+      render: (d) => (d.recorrente ? <span className="text-accent">↻ Todo mês</span> : '—'),
+    },
+    {
       chave: 'valor',
       label: 'Valor',
       alinhar: 'right',
@@ -109,7 +155,11 @@ export default function Despesas() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">Despesas</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold">Despesas</h1>
+        {/* Seletor de mês: mês anterior / próximo (e "Hoje"). */}
+        <SeletorMes mes={mes} onChange={trocarMes} />
+      </div>
 
       {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm`. */}
       <form
@@ -146,6 +196,16 @@ export default function Despesas() {
           className={`${INPUT} num`}
           required
         />
+        {/* Despesa fixa: entra em "Copiar fixos do mês anterior". */}
+        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={form.recorrente}
+            onChange={(e) => setCampo('recorrente', e.target.checked)}
+            className="h-5 w-5 accent-accent"
+          />
+          Repete todo mês
+        </label>
         {erroForm && <p className="text-sm text-negative sm:col-span-2">{erroForm}</p>}
         <button
           disabled={salvando}
@@ -155,6 +215,23 @@ export default function Despesas() {
         </button>
       </form>
 
+      {/* Copiar fixos do mês anterior + mensagem com o resultado. */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={copiarFixos}
+          disabled={copiando}
+          className="min-h-[44px] w-full rounded border border-border px-4 text-sm text-fg hover:border-accent hover:text-accent disabled:opacity-60 sm:w-auto"
+        >
+          {copiando ? 'Copiando…' : 'Copiar fixos do mês anterior'}
+        </button>
+        {aviso && (
+          <p role="status" className="text-sm text-muted">
+            {aviso}
+          </p>
+        )}
+      </div>
+
       <ListaLancamentos
         colunas={colunas}
         itens={despesas}
@@ -162,7 +239,7 @@ export default function Despesas() {
         onExcluir={excluir}
         aoSalvarEdicao={salvarEdicao}
         total={<Money value={total} tone="negative" className="font-medium" />}
-        vazio="Nenhuma despesa cadastrada."
+        vazio="Nenhuma despesa neste mês."
         carregando={carregando}
         erro={erro}
       />

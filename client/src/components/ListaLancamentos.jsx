@@ -18,7 +18,7 @@
  *      alinhar?: 'right',
  *      render?: (item) => node,     // exibição normal (ex.: <Money>)
  *      classe?: string,             // classes extras na célula (desktop)
- *      editor?: 'text' | 'number' | 'select',   // torna o campo editável
+ *      editor?: 'text' | 'number' | 'select' | 'checkbox',   // torna o campo editável
  *      opcoes?: string[],           // opções do <select> (editor 'select')
  *    }>}
  *      A ÚLTIMA coluna é tratada como a coluna de valor no rodapé de total.
@@ -26,7 +26,7 @@
  *  - getId          {(item) => string}       key/id de cada item.
  *  - onExcluir      {(id) => void}            ação do botão ✕.
  *  - aoSalvarEdicao {(id, rascunho) => Promise<void>}
- *      Recebe o id e um objeto `{ [chave]: valorString }`. Deve VALIDAR
+ *      Recebe o id e um objeto `{ [chave]: valor }` (string; booleano no 'checkbox'). Deve VALIDAR
  *      (mesma regra do formulário de criação) e chamar a API (PUT). Deve
  *      lançar `Error` com mensagem em caso de erro — a mensagem aparece
  *      inline na linha.
@@ -42,6 +42,20 @@ const CAMPO =
 
 /** Renderiza o input adequado ao `col.editor`. */
 function EditorCampo({ col, valor, onChange }) {
+  if (col.editor === 'checkbox') {
+    // Caixa de marcação (ex.: "Repete todo mês"); `valor` é booleano.
+    return (
+      <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-fg">
+        <input
+          type="checkbox"
+          checked={Boolean(valor)}
+          onChange={(e) => onChange(e.target.checked)}
+          className="h-5 w-5 accent-accent"
+        />
+        Todo mês
+      </label>
+    );
+  }
   if (col.editor === 'select') {
     return (
       <select className={CAMPO} value={valor} onChange={(e) => onChange(e.target.value)}>
@@ -115,7 +129,7 @@ export default function ListaLancamentos({
     for (const col of colunas) {
       if (!col.editor) continue;
       const v = item[col.chave];
-      inicial[col.chave] = v == null ? '' : String(v);
+      inicial[col.chave] = col.editor === 'checkbox' ? Boolean(v) : v == null ? '' : String(v);
     }
     setRascunho(inicial);
     setEditandoId(getId(item));

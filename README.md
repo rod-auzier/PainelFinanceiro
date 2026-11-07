@@ -78,10 +78,12 @@ Finanças/
 │       ├── index.css           # ★ TOKENS DE COR (:root) + base + regras do Recharts
 │       ├── lib/
 │       │   ├── format.js       # brl()
+│       │   ├── mes.js          # helpers de mês (AAAA-MM), rótulos e mensagem da cópia de fixos
 │       │   ├── constants.js    # CATEGORIAS_DESPESA + paleta do gráfico
 │       │   └── theme.js        # token('surface') → lê CSS var em runtime (p/ Recharts)
 │       ├── hooks/
-│       │   └── useRecurso.js   # hook genérico de carregamento de lista da API
+│       │   ├── useRecurso.js   # hook genérico de carregamento de lista da API
+│       │   └── useMesSelecionado.js # mês escolhido no seletor (guardado no sessionStorage)
 │       ├── services/
 │       │   └── api.js          # Instância axios + interceptor do token JWT
 │       ├── context/
@@ -92,6 +94,7 @@ Finanças/
 │       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
 │       │   ├── MetaItem.jsx                 # linha de meta: checkbox grande + título + lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
+│       │   ├── SeletorMes.jsx               # ‹ mês › — navegação entre meses (Receitas/Despesas/Resumo)
 │       │   ├── SummaryCard.jsx              # cartão de valor agregado (size 'hero' | 'default')
 │       │   └── DespesasPorCategoriaChart.jsx # gráfico de barras Recharts
 │       └── pages/
@@ -114,14 +117,17 @@ Finanças/
         │   └── db.js           # Conexão Mongoose cacheada (serverless-safe)
         ├── models/
         │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs) }
-        │   ├── Receita.js      # { userId, fonte, descricao, valor, createdAt }
-        │   ├── Despesa.js      # { userId, descricao, categoria, valor, createdAt }
+        │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
+        │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, createdAt }
         │   └── Meta.js         # { userId, titulo, concluida (default false), createdAt }
         ├── middlewares/
         │   ├── auth.js         # Valida JWT → injeta req.userId
         │   └── errorHandler.js # 404 + handler de erros padronizado
         ├── utils/
-        │   └── asyncHandler.js # Encaminha erros de handlers async ao errorHandler
+        │   ├── asyncHandler.js # Encaminha erros de handlers async ao errorHandler
+        │   └── mes.js          # mês "AAAA-MM": limites no fuso de Brasília, filtro por createdAt
+        ├── services/
+        │   └── fixos.js        # copiar fixos (recorrentes) do mês anterior, sem duplicar
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
@@ -267,20 +273,40 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 ### Receitas (`/receitas`)
 - **Formulário**: `Fonte` (obrigatório), `Descrição` (opcional) e `Valor`
   (obrigatório, ≥ 0). *Adicionar receita* salva e a lista recarrega.
-- **Lista**: tabela no desktop, cards no mobile; total ao fim.
+- **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: a lista e o total mostram só
+  o mês escolhido; novas receitas são lançadas nesse mês.
+- **Repete todo mês** (checkbox no formulário): marca a receita como **fixa**
+  (aparece como "↻ Todo mês" na lista).
+- **Copiar fixos do mês anterior**: copia para o mês selecionado as receitas
+  fixas do mês anterior (fonte, descrição e valor) e avisa quantas foram
+  copiadas. **Não duplica**: o que já existe no mês (mesma fonte + descrição,
+  também fixa) é ignorado — dá para clicar de novo sem medo.
+- **Lista**: tabela no desktop, cards no mobile; total do mês ao fim.
 - **Editar inline** (lápis): os campos da linha viram inputs ali mesmo, com
-  *Salvar* / *Cancelar* (PUT `/api/receitas/:id`). **✕** exclui.
+  *Salvar* / *Cancelar* (PUT `/api/receitas/:id`) — é por aqui que se ajusta o
+  valor de uma fixa copiada; dá para (des)marcar "Todo mês". **✕** exclui.
 
 ### Despesas (`/despesas`)
 - **Formulário**: `Descrição` (obrigatório), `Categoria` (select fixo:
   Utilidades, Alimentação, Transporte, Saúde, Lazer, Outros) e `Valor`
   (obrigatório, ≥ 0).
-- **Lista**: descrição, categoria e valor; tabela no desktop, cards no mobile;
-  total ao fim.
+- **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: lista e total do mês escolhido;
+  novas despesas são lançadas nesse mês.
+- **Repete todo mês** (checkbox no formulário): marca a despesa como **fixa**
+  ("↻ Todo mês" na lista).
+- **Copiar fixos do mês anterior**: copia para o mês selecionado as despesas
+  fixas do mês anterior (descrição, categoria e valor) para você só editar o
+  que mudou (ex.: a conta de luz) e avisa quantas foram copiadas. **Não
+  duplica**: se já existe no mês uma despesa fixa com a mesma descrição, ela é
+  ignorada.
+- **Lista**: descrição, categoria, fixo e valor; tabela no desktop, cards no
+  mobile; total do mês ao fim.
 - **Editar inline** (lápis): campos viram inputs (`Categoria` continua um
   select), *Salvar* / *Cancelar* (PUT `/api/despesas/:id`). **✕** exclui.
 
 ### Resumo (`/resumo`)
+- **Seletor de mês** (‹ mês ›) no topo: o resumo e o gráfico são do mês escolhido
+  (o mês selecionado é lembrado ao trocar de aba).
 - **Saldo Final** em destaque: número grande em fonte monoespaçada, verde se
   ≥ 0 e vermelho se < 0 — é o elemento principal da tela.
 - Logo abaixo, o **indicador** **▲ Superávit** (verde) / **▼ Déficit** (vermelho).
@@ -289,8 +315,13 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 - **Gráfico (Recharts)**: barras com o total gasto por categoria de despesa;
   categorias sem gasto são omitidas.
 
-Os totais dos cartões vêm de `GET /api/resumo` (somados no MongoDB via
-aggregation); o gráfico é montado no cliente a partir de `GET /api/despesas`.
+Os totais dos cartões vêm de `GET /api/resumo?mes=AAAA-MM` (somados no MongoDB via
+aggregation); o gráfico é montado no cliente a partir de `GET /api/despesas?mes=AAAA-MM`.
+
+> **Como o mês funciona:** receitas e despesas só têm a data `createdAt`; o mês de um
+> lançamento é o mês do seu `createdAt` (fuso de Brasília, UTC-3). Ao lançar com outro
+> mês selecionado, o `createdAt` é posicionado nesse mês. Sem `mes`, as rotas
+> continuam devolvendo/somando todos os meses.
 
 ### Metas (`/metas`)
 Lista de objetivos pessoais com checkbox ("quadradinho") para marcar quando concluir.
@@ -449,15 +480,17 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/register`       | não  | `{ email, senha }`                                 | `201 { user, token }` · `400` · `409`                |
 | POST   | `/api/login`          | não  | `{ email, senha }`                                 | `200 { user, token }` · `400` · `401`                |
 | GET    | `/api/me`             | sim  | header `Bearer`                                    | `200 { user }` · `401` · `404`                       |
-| GET    | `/api/receitas`       | sim  | —                                                 | `200 { receitas: [...] }` (mais recentes primeiro)   |
-| POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao? }`                     | `201 { receita }` · `400`                            |
-| PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao? }`                     | `200 { receita }` · `400` · `404`                    |
+| GET    | `/api/receitas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { receitas: [...] }` (do mês; sem `mes`, todas) |
+| POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao?, recorrente?, mes? }`  | `201 { receita }` · `400`                            |
+| POST   | `/api/receitas/copiar-fixos` | sim | `{ mes }` (mês de destino)                  | `200 { copiadas, ignoradas, mesOrigem, fixosNaOrigem }` · `400` |
+| PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao?, recorrente? }`        | `200 { receita }` · `400` · `404`                    |
 | DELETE | `/api/receitas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/despesas`       | sim  | —                                                 | `200 { despesas: [...] }` (mais recentes primeiro)   |
-| POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria? }`                 | `201 { despesa }` · `400`                            |
-| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria? }`                 | `200 { despesa }` · `400` · `404`                    |
+| GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...] }` (do mês; sem `mes`, todas) |
+| POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, mes? }` | `201 { despesa }` · `400`                         |
+| POST   | `/api/despesas/copiar-fixos` | sim | `{ mes }` (mês de destino)                  | `200 { copiadas, ignoradas, mesOrigem, fixosNaOrigem }` · `400` |
+| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404`                    |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/resumo`         | sim  | —                                                 | `200 { totalReceitas, totalDespesas, saldo }`        |
+| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo }` (do mês; sem `mes`, todos) |
 | GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...] }` (mais recentes primeiro)      |
 | POST   | `/api/metas`          | sim  | `{ titulo }`                                       | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo? }` (ao menos um)            | `200 { meta }` · `400` · `404`                       |

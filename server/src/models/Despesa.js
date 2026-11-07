@@ -8,6 +8,8 @@
  *  - categoria  : agrupador para relatórios (ex.: "Moradia", "Alimentação").
  *                 Opcional — assume "Outros" quando não informado.
  *  - valor      : quantia a pagar, em número. Obrigatório e não-negativo.
+ *  - recorrente : lançamento FIXO que se repete todo mês (checkbox "Repete todo mês").
+ *                  Padrão `false`. Só os recorrentes entram em "Copiar fixos do mês anterior".
  *  - createdAt  : data de registro da despesa. Gerada automaticamente pelo
  *                 `timestamps` do Mongoose (que também cria `updatedAt`).
  */
@@ -35,6 +37,10 @@ const despesaSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'valor é obrigatório'],
       min: [0, 'valor não pode ser negativo'],
+    },
+    recorrente: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true },

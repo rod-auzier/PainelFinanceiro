@@ -2,8 +2,9 @@
  * Tela de Resumo (rota `/resumo`, dentro do <Layout>).
  *
  * Responsabilidades:
- *  - buscar os totais do backend (GET /api/resumo);
- *  - buscar a lista de despesas (GET /api/despesas) para o gráfico;
+ *  - mostrar o resumo do MÊS selecionado (seletor ‹ mês › no topo): totais
+ *    do backend (GET /api/resumo?mes=AAAA-MM);
+ *  - buscar as despesas do mesmo mês (GET /api/despesas?mes=AAAA-MM) para o gráfico;
  *  - destacar o **Saldo Final** como elemento visual principal (número grande,
  *    card `size="hero"`), com Total de Receitas e Total de Despesas como
  *    cards secundários menores ao lado;
@@ -16,10 +17,13 @@
  */
 import { useEffect, useState } from 'react';
 import { api } from '../services/api.js';
+import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
+import SeletorMes from '../components/SeletorMes.jsx';
 import SummaryCard from '../components/SummaryCard.jsx';
 import DespesasPorCategoriaChart from '../components/DespesasPorCategoriaChart.jsx';
 
 export default function Resumo() {
+  const [mes, setMes] = useMesSelecionado();
   const [resumo, setResumo] = useState(null); // { totalReceitas, totalDespesas, saldo }
   const [despesas, setDespesas] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -27,9 +31,14 @@ export default function Resumo() {
 
   useEffect(() => {
     let ativo = true;
+    setCarregando(true);
+    setErro('');
     (async () => {
       try {
-        const [r1, r2] = await Promise.all([api.get('/resumo'), api.get('/despesas')]);
+        const [r1, r2] = await Promise.all([
+          api.get(`/resumo?mes=${mes}`),
+          api.get(`/despesas?mes=${mes}`),
+        ]);
         if (!ativo) return;
         setResumo(r1.data);
         setDespesas(r2.data.despesas ?? []);
@@ -42,16 +51,31 @@ export default function Resumo() {
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [mes]);
 
-  if (carregando) return <p className="text-muted">Carregando…</p>;
-  if (erro) return <p className="text-negative">{erro}</p>;
+  // O cabeçalho com o seletor de mês fica SEMPRE visível (também durante o
+  // carregamento), para não "piscar" ao trocar de mês.
+  const cabecalho = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-lg font-semibold">Resumo</h1>
+      <SeletorMes mes={mes} onChange={setMes} />
+    </div>
+  );
+
+  if (carregando || erro || !resumo) {
+    return (
+      <div className="space-y-6">
+        {cabecalho}
+        {erro ? <p className="text-negative">{erro}</p> : <p className="text-muted">Carregando…</p>}
+      </div>
+    );
+  }
 
   const superavit = resumo.saldo >= 0;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">Resumo</h1>
+      {cabecalho}
 
       {/* Saldo Final em destaque (2/3) + cards secundários (1/3) */}
       <div className="grid gap-4 md:grid-cols-3">

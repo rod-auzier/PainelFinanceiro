@@ -2,36 +2,52 @@
  * Tela de Receitas (rota `/receitas`, dentro do <Layout>).
  *
  * Responsabilidades:
- *  - listar as receitas do usuário (GET /api/receitas via useRecurso);
- *  - criar receita (POST /api/receitas) com Fonte, Descrição e Valor;
- *  - editar receita inline na tabela/card (PUT /api/receitas/:id) — a
- *    validação em `salvarEdicao` repete a do formulário de criação;
+ *  - mostrar as receitas do MÊS selecionado (seletor ‹ mês › no topo →
+ *    GET /api/receitas?mes=AAAA-MM via useRecurso);
+ *  - criar receita (POST /api/receitas) com Fonte, Descrição, Valor e o
+ *    checkbox "Repete todo mês" (`recorrente`). A receita é lançada no mês
+ *    selecionado (`mes` no body);
+ *  - "Copiar fixos do mês anterior" (POST /api/receitas/copiar-fixos): copia
+ *    para o mês selecionado as receitas recorrentes do mês anterior, sem
+ *    duplicar as que já existem, e avisa quantas foram copiadas;
+ *  - editar receita inline (PUT /api/receitas/:id) — a validação em
+ *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
+ *    ajusta o valor de uma receita fixa copiada;
  *  - excluir receita (DELETE /api/receitas/:id);
- *  - exibir o total somado.
+ *  - exibir o total do mês.
  *
  * Responsivo (breakpoint `sm` / `md`, padrões do Tailwind):
  *  - formulário: 1 coluna no mobile, 2 colunas a partir de `sm` (640px);
  *  - lista: cards empilhados no mobile, tabela a partir de `md` — feito
  *    pelo <ListaLancamentos>.
  * Inputs em `text-base` (16px) para não disparar zoom automático no iOS;
- * botão com altura mínima de 44px.
+ * botões com altura mínima de 44px.
  */
 import { useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
+import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
+import { mensagemCopiaFixos } from '../lib/mes.js';
 import Money from '../components/Money.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
+import SeletorMes from '../components/SeletorMes.jsx';
 
-const FORM_VAZIO = { fonte: '', descricao: '', valor: '' };
+const FORM_VAZIO = { fonte: '', descricao: '', valor: '', recorrente: false };
 const INPUT =
   'min-h-[44px] rounded border border-border bg-surface px-3 py-2 text-base text-fg ' +
   'placeholder:text-muted focus:border-accent focus:outline-none';
 
 export default function Receitas() {
-  const { itens: receitas, carregando, erro, recarregar } = useRecurso('/receitas', 'receitas');
+  const [mes, setMes] = useMesSelecionado();
+  const { itens: receitas, carregando, erro, recarregar } = useRecurso(
+    `/receitas?mes=${mes}`,
+    'receitas',
+  );
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState('');
+  const [copiando, setCopiando] = useState(false);
+  const [aviso, setAviso] = useState('');
 
   const total = useMemo(
     () => receitas.reduce((soma, r) => soma + Number(r.valor || 0), 0),
@@ -40,6 +56,11 @@ export default function Receitas() {
 
   function setCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  function trocarMes(novo) {
+    setAviso('');
+    setMes(novo);
   }
 
   async function adicionar(e) {
@@ -51,6 +72,8 @@ export default function Receitas() {
         fonte: form.fonte,
         descricao: form.descricao,
         valor: Number(form.valor),
+        recorrente: form.recorrente,
+        mes, // lança no mês selecionado
       });
       setForm(FORM_VAZIO);
       await recarregar();
@@ -58,6 +81,21 @@ export default function Receitas() {
       setErroForm(err.response?.data?.message || 'Não foi possível salvar.');
     } finally {
       setSalvando(false);
+    }
+  }
+
+  /** Copia as receitas fixas do mês anterior para o mês selecionado. */
+  async function copiarFixos() {
+    setAviso('');
+    setCopiando(true);
+    try {
+      const { data } = await api.post('/receitas/copiar-fixos', { mes });
+      setAviso(mensagemCopiaFixos(data));
+      await recarregar();
+    } catch (err) {
+      setAviso(err.response?.data?.message || 'Não foi possível copiar os fixos.');
+    } finally {
+      setCopiando(false);
     }
   }
 
@@ -83,6 +121,7 @@ export default function Receitas() {
       fonte,
       descricao: (rascunho.descricao ?? '').trim(),
       valor: valorNum,
+      recorrente: Boolean(rascunho.recorrente),
     });
     await recarregar();
   }
@@ -90,6 +129,13 @@ export default function Receitas() {
   const colunas = [
     { chave: 'fonte', label: 'Fonte', editor: 'text' },
     { chave: 'descricao', label: 'Descrição', classe: 'text-muted', editor: 'text' },
+    {
+      chave: 'recorrente',
+      label: 'Fixo',
+      classe: 'text-muted',
+      editor: 'checkbox',
+      render: (r) => (r.recorrente ? <span className="text-accent">↻ Todo mês</span> : '—'),
+    },
     {
       chave: 'valor',
       label: 'Valor',
@@ -101,7 +147,11 @@ export default function Receitas() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">Receitas</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold">Receitas</h1>
+        {/* Seletor de mês: mês anterior / próximo (e "Hoje"). */}
+        <SeletorMes mes={mes} onChange={trocarMes} />
+      </div>
 
       {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm`. */}
       <form
@@ -133,6 +183,16 @@ export default function Receitas() {
           onChange={(e) => setCampo('descricao', e.target.value)}
           className={`${INPUT} sm:col-span-2`}
         />
+        {/* Receita fixa: entra em "Copiar fixos do mês anterior". */}
+        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={form.recorrente}
+            onChange={(e) => setCampo('recorrente', e.target.checked)}
+            className="h-5 w-5 accent-accent"
+          />
+          Repete todo mês
+        </label>
         {erroForm && <p className="text-sm text-negative sm:col-span-2">{erroForm}</p>}
         <button
           disabled={salvando}
@@ -142,6 +202,23 @@ export default function Receitas() {
         </button>
       </form>
 
+      {/* Copiar fixos do mês anterior + mensagem com o resultado. */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={copiarFixos}
+          disabled={copiando}
+          className="min-h-[44px] w-full rounded border border-border px-4 text-sm text-fg hover:border-accent hover:text-accent disabled:opacity-60 sm:w-auto"
+        >
+          {copiando ? 'Copiando…' : 'Copiar fixos do mês anterior'}
+        </button>
+        {aviso && (
+          <p role="status" className="text-sm text-muted">
+            {aviso}
+          </p>
+        )}
+      </div>
+
       <ListaLancamentos
         colunas={colunas}
         itens={receitas}
@@ -149,7 +226,7 @@ export default function Receitas() {
         onExcluir={excluir}
         aoSalvarEdicao={salvarEdicao}
         total={<Money value={total} tone="positive" className="font-medium" />}
-        vazio="Nenhuma receita cadastrada."
+        vazio="Nenhuma receita neste mês."
         carregando={carregando}
         erro={erro}
       />
