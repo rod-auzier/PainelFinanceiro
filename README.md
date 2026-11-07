@@ -275,7 +275,7 @@ automático do iOS ao focar); botões e itens de navegação com **≥ 44×44px*
 ## Uso das telas (frontend)
 
 O app tem **duas telas públicas** (Login e Registro) e, após autenticar,
-a navegação para Receitas, Despesas, Resumo e Metas (sidebar no desktop, bottom
+a navegação para Resumo (página inicial — `/` e o login levam a `/resumo`), Receitas, Despesas e Metas, nessa ordem (sidebar no desktop, bottom
 nav no celular — ver [Responsividade](#responsividade)). O token JWT fica
 no `localStorage`; use "Sair" para descartá-lo.
 

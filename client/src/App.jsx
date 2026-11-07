@@ -6,9 +6,9 @@
  *   /registro   -> <Registro>
  *
  * Rotas privadas (dentro de <Layout>, que exige usuário autenticado):
+ *   /resumo     -> <Resumo>      (página inicial)
  *   /receitas   -> <Receitas>
  *   /despesas   -> <Despesas>
- *   /resumo     -> <Resumo>
  *   /metas      -> <Metas>
  *
  * `/` redireciona para `/resumo`; qualquer rota desconhecida também.

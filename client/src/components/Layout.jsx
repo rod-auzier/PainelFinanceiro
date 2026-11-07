@@ -12,7 +12,7 @@
  *  - <  md (mobile) : sidebar some. No lugar entram:
  *       • uma barra fina no topo (título + "Sair"), e
  *       • uma BOTTOM NAV fixa no rodapé da tela, com os mesmos itens e ÍCONES da sidebar
- *         (Receitas, Despesas, Resumo, Metas — a lista NAV abaixo alimenta as duas), o ícone
+ *         (Resumo, Receitas, Despesas, Metas — a lista NAV abaixo alimenta as duas), o ícone
  *         acima do rótulo e o item ativo em amarelo.
  *    O <main> ganha `pb-24` no mobile para o conteúdo não ficar atrás da
  *    bottom nav (`md:pb-6` volta ao normal no desktop).
@@ -27,10 +27,13 @@ import { NavLink, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { ICONE_NAV } from './IconesNav.jsx';
 
+// Ordem do menu (sidebar e bottom nav): Resumo, Receitas, Despesas, Metas. O Resumo vem
+// primeiro por ser a página inicial (a raiz "/" e o pós-login levam a /resumo — ver App.jsx,
+// Login.jsx e Registro.jsx). Só a ordem importa aqui; as rotas e os ícones não mudam.
 const NAV = [
+  { to: '/resumo', label: 'Resumo' },
   { to: '/receitas', label: 'Receitas' },
   { to: '/despesas', label: 'Despesas' },
-  { to: '/resumo', label: 'Resumo' },
   { to: '/metas', label: 'Metas' },
 ];
 
