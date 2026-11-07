@@ -16,7 +16,10 @@
  *    Além disso o SERVIDOR conclui sozinho a meta quando o total atinge o valor
  *    (sem impedir marcar/desmarcar à mão);
  *  - excluir meta (DELETE /api/metas/:id), também otimista, com reversão;
- *  - contador "X de Y concluídas"; pendentes primeiro, concluídas embaixo;
+ *  - contador "X de Y concluídas"; ORDEM (regra única em lib/metas.js): pendentes primeiro,
+ *    concluídas embaixo; em cada grupo, do menor para o maior valor (5 mil, 10 mil, 15 mil…),
+ *    e as metas sem valor por último, a mais antiga primeiro. A lista se reorganiza sozinha
+ *    ao marcar, desmarcar, editar ou adicionar (a ordem é derivada do estado);
  *  - mensagem amigável quando não há metas.
  *
  * Não recebe props. Autenticação já garantida pelo <Layout>.
@@ -27,6 +30,7 @@ import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import GuardadoCard from '../components/GuardadoCard.jsx';
 import MetaItem from '../components/MetaItem.jsx';
+import { ordenarMetas } from '../lib/metas.js';
 
 // 16px (`text-base`) evita o zoom automático do iOS; 44px = área de toque.
 const INPUT =
@@ -66,15 +70,11 @@ export default function Metas() {
     },
   );
 
-  // Pendentes primeiro, concluídas embaixo. A ordem dentro de cada grupo
-  // segue a da API (mais recentes primeiro).
-  const { pendentes, concluidas } = useMemo(
-    () => ({
-      pendentes: metas.filter((m) => !m.concluida),
-      concluidas: metas.filter((m) => m.concluida),
-    }),
-    [metas],
-  );
+  // Pendentes primeiro, concluídas embaixo; em cada grupo, do menor para o maior valor (metas
+  // sem valor por último, a mais antiga primeiro). A regra mora em lib/metas.js e é DERIVADA do
+  // estado (`metas`): qualquer mudança — marcar, desmarcar, editar, adicionar, inclusive as
+  // atualizações otimistas — reorganiza a lista automaticamente.
+  const { pendentes, concluidas } = useMemo(() => ordenarMetas(metas), [metas]);
 
   /** Cria a meta (valor opcional). Espera a resposta (precisa do `_id` real) e põe no topo. */
   async function adicionar(e) {

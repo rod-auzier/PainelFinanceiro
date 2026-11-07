@@ -430,7 +430,7 @@ vira barra de progresso.
   (**atualização otimista**) e é sincronizada com a API; se a API falhar, volta ao
   estado anterior e mostra o erro.
 - **Excluir**: ícone de **lixeira** (`DELETE /api/metas/:id`).
-- **Contador** no topo: "X de Y concluídas". **Ordem**: pendentes primeiro; concluídas
+- **Contador** no topo: "X de Y concluídas". **Ordem**: pendentes primeiro; em cada grupo, do **menor para o maior valor** (5 mil, 10 mil, 15 mil, 20 mil…) e, por último, as metas **sem valor** (a mais antiga primeiro). A lista se reorganiza sozinha ao marcar, desmarcar, editar ou adicionar (regra única em `client/src/lib/metas.js`); concluídas
   embaixo, sob o rótulo "Concluídas". Sem metas, mensagem amigável.
 
 O checkbox, o lápis e a lixeira têm áreas de toque ≥ 44px; a linha inteira (caixa +
