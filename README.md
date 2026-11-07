@@ -80,6 +80,7 @@ Finanças/
 │       │   ├── format.js       # brl()
 │       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
 │       │   ├── constants.js    # CATEGORIAS_DESPESA + mapa único de cores das categorias
+│       │   ├── previsao.js     # previsão das metas ("No ritmo atual, chega em mar/2027") — funções puras
 │       ├── hooks/
 │       │   ├── useRecurso.js   # hook genérico de carregamento de lista da API
 │       │   └── useMesSelecionado.js # mês escolhido no seletor (guardado no sessionStorage)
@@ -460,6 +461,12 @@ vira barra de progresso.
   [Total guardado: só meses fechados](#total-guardado-só-meses-fechados)).
 - Linhas do card: *Saldo inicial guardado*, *Receitas − despesas (meses fechados, desde out/2026)* e,
   discreta, *Mês em andamento (novembro/2026), entra em 01/12/2026: R$ X* (parcial, ainda fora do total).
+- **Média guardada por mês**: linha "Média guardada por mês: R$ X (base: N meses fechados)". É a
+  **média de (receitas − despesas) por mês fechado** — mesma regra do total: de outubro/2026 ao mês
+  anterior ao atual, o mês atual **não entra** (fuso America/Fortaleza). Calculada **no backend**
+  (`mediaMensal` e `mesesFechados` em `GET /api/guardado` e no `guardado` de `GET /api/metas`;
+  `services/guardado.js`). Com só 1 mês fechado a base diz "(base: 1 mês)" — estimativa fraca;
+  sem nenhum mês fechado (outubro/2026) a linha não aparece. O saldo inicial não entra na média.
 - O **Saldo inicial guardado** é um único número por usuário, editável ali mesmo
   (*Salvar saldo*): use-o para acertar o que você já tinha guardado antes de usar o
   painel. Ao salvar, as metas são reavaliadas.
@@ -469,6 +476,13 @@ vira barra de progresso.
   Sem valor, a meta é um checklist comum.
 - **Meta com valor**: barra de progresso **verde**, porcentagem e "R$ X de R$ Y".
   Progresso = `min(total guardado ÷ valor, 100%)`.
+- **Previsão** (texto pequeno, cor secundária, abaixo da barra): em cada meta **com valor ainda não
+  atingido**, "**No ritmo atual, chega em mar/2027**" (mês abreviado em pt-BR). Conta:
+  `faltam = valor − total guardado`, `meses = ceil(faltam ÷ média)`, `previsão = mês atual + meses`.
+  O total só cresce quando um mês **fecha**, então o primeiro fechamento é o mês atual + 1 (a previsão
+  nunca é o mês atual). Média **zero ou negativa** → "Sem previsão no ritmo atual". **Nenhum mês
+  fechado** ainda → sem previsão. Metas já atingidas/concluídas ou sem valor não mostram previsão.
+  Cálculo na tela, em `client/src/lib/previsao.js`, a partir da média que a API devolve.
 - **Conclusão automática**: quando o total guardado atinge o valor, a meta é marcada
   como concluída sozinha. Você continua podendo marcar/desmarcar à mão — se
   desmarcar uma meta que já foi concluída automaticamente, ela **não** é remarcada
@@ -652,8 +666,8 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total, emAndamento }` — só meses fechados; `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total) |
-| PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total, emAndamento }` · `400` |
+| GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — só meses fechados; `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total) |
+| PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` · `400` |
 
 ---
 

@@ -6,6 +6,10 @@
  *  - meta       {{ _id, titulo, concluida, valorAlvo: number|null }}
  *  - total      {number}  total guardado atual (saldo inicial + receitas − despesas),
  *                         usado para calcular o progresso das metas com valor.
+ *  - previsao   {string|null}  (opcional) texto da previsão ("No ritmo atual, chega em mar/2027"),
+ *                         calculado pela página (lib/previsao.js). Aparece em texto pequeno, na cor
+ *                         secundária, logo abaixo da barra de progresso; `null` = não mostra nada
+ *                         (meta sem valor, já atingida ou sem mês fechado para estimar).
  *  - onAlternar {(meta) => void}  marcar/desmarcar o checkbox.
  *  - onExcluir  {(meta) => void}  clicar na lixeira.
  *  - onSalvarEdicao {(meta, { titulo: string, valorAlvo: number|null }) => Promise<void>}
@@ -64,7 +68,7 @@ export function fracaoProgresso(total, valorAlvo) {
   return Math.max(0, Math.min(total / valorAlvo, 1));
 }
 
-export default function MetaItem({ meta, total, onAlternar, onExcluir, onSalvarEdicao }) {
+export default function MetaItem({ meta, total, previsao, onAlternar, onExcluir, onSalvarEdicao }) {
   const [editando, setEditando] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [valor, setValor] = useState('');
@@ -207,6 +211,8 @@ export default function MetaItem({ meta, total, onAlternar, onExcluir, onSalvarE
             </span>
             <span className="num text-fg">{porcentagem}%</span>
           </div>
+          {/* Previsão de quando a meta é atingida no ritmo atual (só metas com valor pendentes). */}
+          {previsao && <p className="mt-1 text-xs text-muted">{previsao}</p>}
         </div>
       )}
     </li>

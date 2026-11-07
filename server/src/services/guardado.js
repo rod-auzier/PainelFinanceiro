@@ -11,6 +11,14 @@
  *   O resultado PARCIAL do mês em andamento é devolvido à parte (`emAndamento`) só para
  *   a tela mostrar — ele ainda não está somado ao total.
  *
+ * MÉDIA MENSAL GUARDADA (base da PREVISÃO das metas)
+ *   média = (receitas − despesas dos meses FECHADOS) ÷ quantidade de meses fechados — ou seja,
+ *   a média de (receitas − despesas) por mês fechado, com a MESMA regra do total (o mês atual
+ *   não entra; fuso America/Fortaleza). Sem nenhum mês fechado não há média (`null`). A API
+ *   devolve também `mesesFechados` (a "base" da média) para a tela dizer em quantos meses ela se
+ *   apoia — com 1 só, a estimativa é fraca. A previsão em si ("chega em mar/2027") é calculada
+ *   na tela (client/src/lib/previsao.js) a partir desses números.
+ *
  * Antes de somar, garante que os fixos de todos os meses até o mês atual já foram
  * gerados (services/fixos.js) — senão o total mudaria só depois de abrir cada mês e o
  * parcial do mês atual ficaria sem os recorrentes.
@@ -34,7 +42,7 @@ import { Meta } from '../models/Meta.js';
 import { User } from '../models/User.js';
 import { garantirFixosAteMesAtual } from './fixos.js';
 import { somarMesesFechados, somarValor } from './totais.js';
-import { MES_INICIAL, mesAtual, mesSeguinte } from '../utils/mes.js';
+import { MES_INICIAL, mesAtual, mesSeguinte, mesesEntre } from '../utils/mes.js';
 
 /** Arredonda para centavos (evita 4999.999999… em somas de ponto flutuante). */
 export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
@@ -50,10 +58,15 @@ export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
  *   saldoInicial: number,
  *   saldoAcumulado: number,
  *   total: number,
+ *   mesesFechados: number,
+ *   mediaMensal: number | null,
  *   emAndamento: null | { mes: string, receitas: number, despesas: number, saldo: number, entraEm: string }
  * }>}
  *   - `saldoAcumulado` = receitas − despesas dos meses FECHADOS (de MES_INICIAL ao mês anterior ao atual);
  *   - `total`          = saldoInicial + saldoAcumulado (o mês em andamento NÃO está incluído);
+ *   - `mesesFechados`  = quantos meses fechados existem (de MES_INICIAL ao mês anterior ao atual; 0 no 1º mês);
+ *   - `mediaMensal`    = saldoAcumulado ÷ mesesFechados (média guardada por mês; negativa se gastou
+ *                        mais do que recebeu), ou `null` quando `mesesFechados` é 0;
  *   - `emAndamento`    = resultado parcial do mês atual, que ainda NÃO está no total: `mes` ("AAAA-MM"),
  *                        `receitas`, `despesas`, `saldo` e `entraEm` (data "AAAA-MM-DD" em que passa a
  *                        entrar: dia 1 do mês seguinte). `null` se o painel ainda não começou (hoje <
@@ -73,11 +86,16 @@ export async function calcularGuardado(userId, hoje = mesAtual()) {
 
   const saldoInicial = arredondar(usuario?.saldoInicial ?? 0);
   const saldoAcumulado = arredondar(receitasFechadas - despesasFechadas);
+  // Meses fechados: de MES_INICIAL (inclusive) até o mês atual (exclusive). 0 em outubro/2026.
+  const mesesFechados = mesesEntre(MES_INICIAL, hoje);
+  const mediaMensal = mesesFechados > 0 ? arredondar(saldoAcumulado / mesesFechados) : null;
 
   return {
     saldoInicial,
     saldoAcumulado,
     total: arredondar(saldoInicial + saldoAcumulado),
+    mesesFechados,
+    mediaMensal,
     emAndamento: painelComecou
       ? {
           mes: hoje,

@@ -20,6 +20,9 @@
  *    concluídas embaixo; em cada grupo, do menor para o maior valor (5 mil, 10 mil, 15 mil…),
  *    e as metas sem valor por último, a mais antiga primeiro. A lista se reorganiza sozinha
  *    ao marcar, desmarcar, editar ou adicionar (a ordem é derivada do estado);
+ *  - PREVISÃO: abaixo da barra de cada meta com valor ainda não atingido, "No ritmo atual, chega em
+ *    mar/2027" (ou "Sem previsão no ritmo atual" se a média mensal guardada é ≤ 0); sem mês
+ *    fechado não mostra nada. Cálculo em lib/previsao.js, com a média que a API devolve;
  *  - mensagem amigável quando não há metas.
  *
  * Não recebe props. Autenticação já garantida pelo <Layout>.
@@ -31,6 +34,7 @@ import { useRecurso } from '../hooks/useRecurso.js';
 import GuardadoCard from '../components/GuardadoCard.jsx';
 import MetaItem from '../components/MetaItem.jsx';
 import { ordenarMetas } from '../lib/metas.js';
+import { textoPrevisao } from '../lib/previsao.js';
 
 // 16px (`text-base`) evita o zoom automático do iOS; 44px = área de toque.
 const INPUT =
@@ -162,6 +166,7 @@ export default function Metas() {
       key={m._id}
       meta={m}
       total={total}
+      previsao={textoPrevisao(m, guardado)} // "No ritmo atual, chega em …" (ou null)
       onAlternar={alternar}
       onExcluir={excluir}
       onSalvarEdicao={salvarEdicao}

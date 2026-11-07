@@ -8,9 +8,14 @@
  * você já tinha guardado antes de começar a usar o painel.
  *
  * Props:
- *  - guardado {{ saldoInicial, saldoAcumulado, total, emAndamento: { mes, saldo, entraEm } | null } | null}
+ *  - guardado {{ saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal,
+ *                emAndamento: { mes, saldo, entraEm } | null } | null}
  *      Dados vindos de GET /api/guardado (null enquanto carrega). `emAndamento` é o parcial do
  *      mês atual (ainda fora do total); o nome do mês e a data em que entra vêm dele (dinâmicos).
+ *      `mediaMensal`/`mesesFechados` = média de (receitas − despesas) por mês FECHADO e a "base"
+ *      dela; viram a linha "Média guardada por mês: R$ X (base: N meses fechados)" (sem mês
+ *      fechado a linha não aparece). Com só 1 mês fechado a base diz "1 mês", sinalizando que a
+ *      estimativa é fraca.
  *  - onSalvarSaldoInicial {(valor: number) => Promise<void>}
  *      Chamado ao salvar o saldo inicial. Deve lançar Error com mensagem se
  *      falhar (a mensagem aparece abaixo do campo).
@@ -85,6 +90,18 @@ export default function GuardadoCard({ guardado, onSalvarSaldoInicial }) {
             <Money value={guardado.saldoAcumulado} tone="auto" />
           </dd>
         </div>
+        {/* Média guardada por mês (base da previsão das metas). Só existe com ao menos 1 mês fechado. */}
+        {guardado.mediaMensal != null && guardado.mesesFechados > 0 && (
+          <div>
+            <dt className="inline">Média guardada por mês: </dt>
+            <dd className="inline">
+              <Money value={guardado.mediaMensal} tone="auto" />{' '}
+              <span className="text-xs">
+                (base: {guardado.mesesFechados} {guardado.mesesFechados === 1 ? 'mês' : 'meses fechados'})
+              </span>
+            </dd>
+          </div>
+        )}
         {/* Parcial do mês em andamento: informativo, AINDA NÃO somado ao total. */}
         {guardado.emAndamento && (
           <div className="flex items-baseline justify-between gap-3 text-xs">

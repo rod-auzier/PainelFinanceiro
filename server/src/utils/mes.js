@@ -113,6 +113,18 @@ export function mesAnterior(mes) {
   return `${d.getUTCFullYear()}-${doisDigitos(d.getUTCMonth() + 1)}`;
 }
 
+/**
+ * Quantos meses há de `inicio` (INCLUSIVE) até `fim` (EXCLUSIVE). Ex.: ("2026-10", "2026-11") → 1;
+ * ("2026-10", "2027-02") → 4; se `fim` ≤ `inicio` → 0. Usado para contar os MESES FECHADOS.
+ * @param {string} inicio "AAAA-MM"
+ * @param {string} fim    "AAAA-MM"
+ */
+export function mesesEntre(inicio, fim) {
+  const a = partes(inicio);
+  const b = partes(fim);
+  return Math.max(0, (b.ano - a.ano) * 12 + (b.mes - a.mes));
+}
+
 /** Mês seguinte a "AAAA-MM" (ex.: "2026-12" → "2027-01"). */
 export function mesSeguinte(mes) {
   const { ano, mes: m } = partes(mes);

@@ -16,10 +16,13 @@ import { arredondar, calcularESincronizar, calcularGuardado } from '../services/
  * @access  Privado — header `Authorization: Bearer <token>`
  * @param   {import('express').Request}  req  — usa apenas `req.userId`
  * @param   {import('express').Response} res
- * @returns {200} `{ saldoInicial, saldoAcumulado, total, emAndamento }` (valores em R$):
+ * @returns {200} `{ saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` (valores em R$):
  *   - `saldoInicial`   — o número que o usuário informou (0 por padrão);
  *   - `saldoAcumulado` — receitas − despesas dos MESES FECHADOS (de MES_INICIAL ao mês anterior ao atual);
  *   - `total`          — saldoInicial + saldoAcumulado (pode ser negativo);
+ *   - `mesesFechados`  — quantos meses fechados existem (0 em outubro/2026);
+ *   - `mediaMensal`    — média de (receitas − despesas) por mês FECHADO (= saldoAcumulado ÷ mesesFechados;
+ *                        o mês atual não entra), ou `null` sem mês fechado. Base da previsão das metas;
  *   - `emAndamento`    — parcial do mês atual, AINDA NÃO somado ao total:
  *                        `{ mes: "AAAA-MM", receitas, despesas, saldo, entraEm: "AAAA-MM-DD" }`
  *                        (`entraEm` = dia em que passa a entrar no total); `null` se o painel
@@ -39,7 +42,7 @@ export async function obterGuardado(req, res) {
  * @param   {import('express').Request} req
  * @param   {object} req.body
  * @param   {number} req.body.saldoInicial — número ≥ 0.
- * @returns {200} `{ saldoInicial, saldoAcumulado, total, emAndamento }` — já com o novo saldo (mesmo formato do GET).
+ * @returns {200} `{ saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — já com o novo saldo (mesmo formato do GET).
  * @returns {400} `{ message }` — `saldoInicial` ausente, não numérico ou negativo.
  */
 export async function definirSaldoInicial(req, res) {
