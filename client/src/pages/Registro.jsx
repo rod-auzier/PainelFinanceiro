@@ -2,7 +2,8 @@
  * Tela de Registro (rota pública `/registro`).
  *
  * Responsabilidades:
- *  - renderizar o <AuthForm> no modo "criar conta";
+ *  - renderizar o <AuthForm> no modo "criar conta", com Nome e Sobrenome (obrigatórios) antes do
+ *    e-mail e da senha (`comNome`);
  *  - ao registrar, o backend já devolve `{ user, token }`, então o
  *    AuthContext deixa o usuário autenticado e seguimos para `/resumo`;
  *  - se já estiver logado, redireciona.
@@ -23,6 +24,7 @@ export default function Registro() {
     <AuthForm
       titulo="Criar conta"
       textoBotao="Cadastrar"
+      comNome
       onSubmit={async (dados) => {
         await register(dados);
         navigate('/resumo');

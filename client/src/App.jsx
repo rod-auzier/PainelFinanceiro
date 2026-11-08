@@ -10,6 +10,7 @@
  *   /receitas   -> <Receitas>
  *   /despesas   -> <Despesas>
  *   /metas      -> <Metas>
+ *   /perfil     -> <Perfil>      (nome/sobrenome e troca de senha; aberta pelo cartão do usuário)
  *
  * `/` redireciona para `/resumo`; qualquer rota desconhecida também.
  * O <Layout> cuida do redirect para /login quando não há sessão.
@@ -22,6 +23,7 @@ import Receitas from './pages/Receitas.jsx';
 import Despesas from './pages/Despesas.jsx';
 import Resumo from './pages/Resumo.jsx';
 import Metas from './pages/Metas.jsx';
+import Perfil from './pages/Perfil.jsx';
 
 export default function App() {
   return (
@@ -34,6 +36,7 @@ export default function App() {
         <Route path="/despesas" element={<Despesas />} />
         <Route path="/resumo" element={<Resumo />} />
         <Route path="/metas" element={<Metas />} />
+        <Route path="/perfil" element={<Perfil />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/resumo" replace />} />

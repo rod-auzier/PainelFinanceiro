@@ -14,6 +14,8 @@ router.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.up
 
 // Auth fica na raiz de /api:  POST /api/register, POST /api/login, GET /api/me
 router.use('/', authRoutes);
+// Os mesmos handlers também sob /api/auth: GET /api/auth/me, PATCH /api/auth/perfil, PATCH /api/auth/senha.
+router.use('/auth', authRoutes);
 
 // Recursos protegidos (cada router aplica o middleware authRequired internamente).
 router.use('/receitas', receitaRoutes);

@@ -8,9 +8,13 @@
  *       • rótulo "MENU" e os itens, cada um com ícone de linha (IconesNav.jsx); o item ativo
  *         ganha fundo, borda sutil, texto/ícone em amarelo e uma barrinha amarela de 3px
  *         encostada na borda esquerda da sidebar;
- *       • rodapé: cartão com avatar (inicial do e-mail), e-mail truncado e "Sair".
+ *       • rodapé: cartão do usuário — avatar (inicial do NOME; do e-mail se ainda não tem nome),
+ *         "Nome Sobrenome" em destaque (truncado) e o e-mail menor embaixo, mais o botão "Sair".
+ *         Clicar no cartão (menos no "Sair") abre o Perfil (/perfil). Usuários antigos, sem nome,
+ *         veem o e-mail como nome até preenchê-lo no Perfil.
  *  - <  md (mobile) : sidebar some. No lugar entram:
- *       • uma barra fina no topo (título + "Sair"), e
+ *       • uma barra fina no topo (título + avatar). O avatar abre um menu com Perfil e "Sair"
+ *         (<MenuUsuario>), para a barra de baixo ficar só com as 4 telas, e
  *       • uma BOTTOM NAV fixa no rodapé da tela, com os mesmos itens e ÍCONES da sidebar
  *         (Resumo, Receitas, Despesas, Metas — a lista NAV abaixo alimenta as duas), o ícone
  *         acima do rótulo e o item ativo em amarelo.
@@ -26,6 +30,8 @@
 import { NavLink, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { ICONE_NAV } from './IconesNav.jsx';
+import MenuUsuario from './MenuUsuario.jsx';
+import { inicialDoUsuario, nomeExibido } from '../lib/usuario.js';
 
 // Ordem do menu (sidebar e bottom nav): Resumo, Receitas, Despesas, Metas. O Resumo vem
 // primeiro por ser a página inicial (a raiz "/" e o pós-login levam a /resumo — ver App.jsx,
@@ -113,26 +119,45 @@ export default function Layout() {
           })}
         </nav>
 
-        {/* ---------- Rodapé: cartão do usuário (avatar + e-mail + Sair) ---------- */}
+        {/* ---------- Rodapé: cartão do usuário (avatar + nome + e-mail + Sair) ----------
+            O cartão inteiro leva ao Perfil: um <NavLink> invisível cobre toda a área (absolute
+            inset-0) e o conteúdo por cima tem `pointer-events-none`, então o clique "atravessa"
+            para o link. Só o botão "Sair" reativa os cliques (pointer-events-auto) e, por ficar
+            acima do link, NÃO abre o Perfil. */}
         <div className="mt-auto p-3">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-bg p-3">
-            {/* Avatar: círculo de 32px com a inicial do e-mail (shrink-0 mantém sempre redondo). */}
-            <div
-              aria-hidden="true"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-sm font-semibold uppercase text-accent"
-            >
-              {user.email?.charAt(0) || '?'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs text-fg" title={user.email}>
-                {user.email}
-              </p>
-              <button
-                onClick={logout}
-                className="mt-0.5 flex min-h-[28px] items-center text-xs font-medium text-accent hover:opacity-80"
+          <div className="relative rounded-lg border border-border bg-bg transition-colors hover:border-muted">
+            <NavLink
+              to="/perfil"
+              aria-label="Abrir perfil"
+              className={({ isActive }) =>
+                `absolute inset-0 rounded-lg ${isActive ? 'ring-1 ring-accent' : ''}`
+              }
+            />
+            <div className="pointer-events-none relative flex items-center gap-3 p-3">
+              {/* Avatar: círculo de 32px com a inicial do nome (shrink-0 mantém sempre redondo). */}
+              <div
+                aria-hidden="true"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-sm font-semibold text-accent"
               >
-                Sair
-              </button>
+                {inicialDoUsuario(user)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-fg" title={nomeExibido(user)}>
+                  {nomeExibido(user)}
+                </p>
+                {/* E-mail pequeno e secundário — só quando o nome é exibido (senão já é o título). */}
+                {user.nome && (
+                  <p className="truncate text-xs text-muted" title={user.email}>
+                    {user.email}
+                  </p>
+                )}
+                <button
+                  onClick={logout}
+                  className="pointer-events-auto relative mt-0.5 flex min-h-[28px] items-center text-xs font-medium text-accent hover:opacity-80"
+                >
+                  Sair
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -141,12 +166,8 @@ export default function Layout() {
       {/* ===================== TOP BAR — só em < md ===================== */}
       <header className="flex items-center justify-between border-b border-border bg-surface px-4 md:hidden">
         <span className="font-semibold tracking-tight">Painel Financeiro</span>
-        <button
-          onClick={logout}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-end text-sm text-accent"
-        >
-          Sair
-        </button>
+        {/* Avatar com menu (Perfil / Sair): mantém a barra inferior só com as 4 telas. */}
+        <MenuUsuario user={user} onSair={logout} />
       </header>
 
       {/* ===================== CONTEÚDO ===================== */}

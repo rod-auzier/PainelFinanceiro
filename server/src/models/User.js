@@ -8,6 +8,16 @@
  *  - senha  : hash da senha (algoritmo bcrypt, via `bcryptjs`) — NUNCA a
  *             senha em texto puro. `select: false` faz o campo NÃO vir em
  *             consultas por padrão, evitando vazar o hash nas respostas da API.
+ *  - nome, sobrenome : nome do usuário (String, sem espaços nas pontas, até NOME_MAX caracteres).
+ *             Preenchidos no cadastro. Usuários ANTIGOS não têm esses campos (ficam `undefined`) e o
+ *             app não depende deles: sem nome, a tela usa o e-mail como nome exibido até a pessoa
+ *             preencher pelo Perfil. Por isso NÃO são `required` no schema (a obrigatoriedade no
+ *             cadastro é validada no controller).
+ *  - senhaTentativas, senhaBloqueadoAte : controle de força bruta da TROCA DE SENHA (Perfil).
+ *             Contam erros seguidos da "senha atual"; ao chegar em 5, `senhaBloqueadoAte` bloqueia
+ *             novas tentativas por alguns minutos. `select: false`: internos, nunca vão para a API.
+ *             Ficam no banco (e não na memória) porque na Vercel cada requisição pode cair numa
+ *             instância diferente da função serverless.
  *  - saldoInicial : "Saldo inicial guardado" — quanto o usuário já tinha guardado
  *             ANTES de usar o painel (um único número por usuário, editável na aba
  *             Metas). É somado ao resultado (receitas − despesas) para formar o
@@ -25,6 +35,9 @@ import bcrypt from 'bcryptjs';
 // Custo do bcrypt: quanto maior, mais lento (e mais seguro). 10 é um bom padrão.
 const SALT_ROUNDS = 10;
 
+/** Limite de caracteres de `nome` e de `sobrenome` (o mesmo vale na validação do controller e no formulário). */
+export const NOME_MAX = 50;
+
 const userSchema = new mongoose.Schema(
   {
     email: {
@@ -39,6 +52,12 @@ const userSchema = new mongoose.Schema(
       required: [true, 'senha é obrigatória'],
       select: false,
     },
+    // Opcionais no schema (usuários antigos não os têm); obrigatórios só no cadastro.
+    nome: { type: String, trim: true, maxlength: NOME_MAX },
+    sobrenome: { type: String, trim: true, maxlength: NOME_MAX },
+    // Anti força bruta da troca de senha (internos; nunca saem na API).
+    senhaTentativas: { type: Number, default: 0, select: false },
+    senhaBloqueadoAte: { type: Date, default: null, select: false },
     saldoInicial: {
       type: Number,
       default: 0,
@@ -68,6 +87,8 @@ userSchema.methods.verificarSenha = function verificarSenha(senhaTextoPuro) {
 userSchema.set('toJSON', {
   transform: (_doc, ret) => {
     delete ret.senha;
+    delete ret.senhaTentativas; // (já são `select: false`; garantia extra se vierem carregados)
+    delete ret.senhaBloqueadoAte;
     delete ret.__v;
     return ret;
   },

@@ -89,7 +89,9 @@ Finanças/
 │       ├── context/
 │       │   └── AuthContext.jsx # Estado de auth (login/register/logout, localStorage)
 │       ├── components/
-│       │   ├── AuthForm.jsx                 # form e-mail+senha (Login e Registro)
+│       │   ├── AuthForm.jsx                 # form e-mail+senha (Login e Registro; Registro com Nome/Sobrenome)
+│       │   ├── CampoSenha.jsx               # campo de senha com Mostrar/Ocultar
+│       │   ├── MenuUsuario.jsx              # menu do avatar no topo do celular (Perfil / Sair)
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
 │       │   ├── IconesNav.jsx                # ícones de linha (SVG inline) do menu
 │       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
@@ -104,7 +106,8 @@ Finanças/
 │       │   └── CategoriaPonto.jsx           # bolinha com a cor fixa da categoria
 │       └── pages/
 │           ├── Login.jsx       # Tela de login
-│           ├── Registro.jsx    # Tela de cadastro
+│           ├── Registro.jsx    # Tela de cadastro (com Nome e Sobrenome)
+│           ├── Perfil.jsx      # Perfil: nome/sobrenome + alterar senha
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
 │           ├── Despesas.jsx    # Formulário + tabela + total de despesas
 │           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
@@ -144,7 +147,7 @@ Finanças/
 │   └── guardado.controller.js # total guardado e saldo inicial
         └── routes/
             ├── index.js           # Agrupa as rotas sob /api (+ /health)
-            ├── auth.routes.js     # /api/register, /api/login, /api/me
+            ├── auth.routes.js     # /api/register, /api/login, /api/me e /api/auth/{me,perfil,senha}
             ├── receita.routes.js  # /api/receitas  (protegida)
             ├── despesa.routes.js  # /api/despesas  (protegida)
             ├── resumo.routes.js   # /api/resumo    (protegida)
@@ -290,9 +293,37 @@ nav no celular — ver [Responsividade](#responsividade)). O token JWT fica
 no `localStorage`; use "Sair" para descartá-lo.
 
 ### Registro (`/registro`)
-Informe **e-mail** e **senha** (mínimo 6 caracteres) e clique em *Cadastrar*.
+Informe **Nome** e **Sobrenome** (obrigatórios: mínimo 2 e máximo 50 caracteres, espaços das pontas
+removidos), **e-mail** e **senha** (mínimo 6 caracteres) e clique em *Cadastrar*.
 O backend já devolve o token, então você entra direto no painel. Link no
-rodapé alterna para a tela de Login.
+rodapé alterna para a tela de Login. O servidor valida nome e sobrenome de novo.
+
+**Usuários antigos** (criados antes do nome existir) continuam entrando normalmente: ficam sem
+`nome`/`sobrenome` e o app usa o **e-mail como nome exibido** (e a inicial do e-mail no avatar)
+até eles preencherem o nome pelo Perfil. Nada quebra por falta do nome.
+
+### Cartão do usuário e Perfil (`/perfil`)
+- **Sidebar (desktop)**: no rodapé, um cartão com o **avatar** (inicial do *nome*; do e-mail se ainda
+  não há nome), **"Nome Sobrenome"** em destaque (truncado com reticências se longo), o **e-mail**
+  menor em cor secundária e o botão **Sair**. **Clicar no cartão** (menos no "Sair") abre o Perfil.
+- **Celular**: a barra inferior continua só com as 4 telas. No topo, o **avatar** abre um menu com
+  o nome, o e-mail, **Perfil** e **Sair**.
+- **Perfil** — seção **Dados**: editar *Nome* e *Sobrenome* (mesmas regras do cadastro); o e-mail só
+  aparece, sem edição. *Salvar* mostra "Dados salvos." (verde) e o nome na sidebar atualiza na hora.
+  Usuários antigos veem os campos vazios e podem preenchê-los pela primeira vez.
+- **Perfil** — seção **Alterar senha**: *Senha atual*, *Nova senha* e *Confirmar nova senha*, cada
+  uma com botão **Mostrar/Ocultar**. Regras: nova senha com **no mínimo 8 caracteres**, **diferente
+  da atual** e **confirmação igual**. Erros claros em vermelho ("Senha atual incorreta. Restam 4
+  tentativas.", etc.) e sucesso em verde ("Senha alterada com sucesso.").
+- **Limite de tentativas**: o projeto não tinha rate limit, então foi criado um para a troca de senha:
+  **5 erros seguidos** da senha atual **bloqueiam a troca por 10 minutos** (`429`, mesmo que a
+  senha certa seja informada nesse período); acertar zera o contador. Os contadores ficam no banco
+  (`senhaTentativas`/`senhaBloqueadoAte` no `User`, ocultos da API) porque na Vercel cada
+  requisição pode cair numa instância diferente. Erros de validação de formato não contam.
+- **Segurança**: as rotas agem só sobre o usuário do token (nunca por id do corpo); a senha atual é
+  conferida com `bcrypt.compare`, a nova é gravada como hash bcrypt, e senhas/hashes nunca são
+  devolvidos nem registrados em log. Os tokens já emitidos seguem válidos até expirar (trocar a
+  senha não derruba a sessão atual).
 
 ### Login (`/login`)
 Mesmo formulário, para quem já tem conta. Credenciais inválidas mostram a
@@ -657,9 +688,12 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | Método | Rota                  | Auth | Recebe                                             | Retorna                                              |
 |--------|-----------------------|------|---------------------------------------------------|-----------------------------------------------------|
 | GET    | `/api/health`         | não  | —                                                 | `{ status, uptime }`                                 |
-| POST   | `/api/register`       | não  | `{ email, senha }`                                 | `201 { user, token }` · `400` · `409`                |
+| POST   | `/api/register`       | não  | `{ nome, sobrenome, email, senha }` (nome/sobrenome: 2–50 caracteres) | `201 { user, token }` · `400` · `409` |
 | POST   | `/api/login`          | não  | `{ email, senha }`                                 | `200 { user, token }` · `400` · `401`                |
 | GET    | `/api/me`             | sim  | header `Bearer`                                    | `200 { user }` · `401` · `404`                       |
+| GET    | `/api/auth/me`        | sim  | header `Bearer`                                    | `200 { user }` com `nome`, `sobrenome` (ausentes em usuários antigos) e `email` · `401` · `404` |
+| PATCH  | `/api/auth/perfil`    | sim  | `{ nome, sobrenome }`                              | `200 { user }` · `400` · `401`                       |
+| PATCH  | `/api/auth/senha`     | sim  | `{ senhaAtual, novaSenha, confirmacao }`           | `200 { message }` · `400` (validação / "Senha atual incorreta") · `429` (bloqueio por 5 erros seguidos, 10 min) · `401` |
 | GET    | `/api/receitas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { receitas: [...], fixosGerados }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante) |
 | POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao?, recorrente?, mes? }`  | `201 { receita }` · `400`                            |
 | PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao?, recorrente? }`        | `200 { receita }` · `400` · `404`                    |
