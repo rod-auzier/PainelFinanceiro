@@ -274,7 +274,7 @@ estão comentados no código:
 
 | Elemento | `< md` (mobile) | `>= md` (desktop) |
 |---|---|---|
-| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (4 itens, ícone acima do rótulo, ativo em amarelo) + barra fina no topo com "Sair" | **sidebar** lateral fixa (14rem): marca (logo + "Painel Financeiro" / "Controle pessoal"), rótulo "MENU", itens com ícone (ativo: fundo, borda, amarelo e barrinha de 3px na borda esquerda) e cartão do usuário (avatar com a inicial, e-mail, "Sair") no rodapé |
+| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (4 itens, ícone acima do rótulo, ativo em amarelo) + barra fina no topo com o avatar (menu: Perfil e Sair) | **sidebar** lateral fixa (14rem): marca (logo + "Painel Financeiro" / "Controle pessoal"), rótulo "MENU", itens com ícone (ativo: fundo, borda, amarelo e barrinha de 3px na borda esquerda) e cartão do usuário (avatar com a inicial, nome, "Sair") no rodapé |
 | Listas de Receitas/Despesas ([ListaLancamentos.jsx](client/src/components/ListaLancamentos.jsx)) | **cards empilhados** (label + valor em coluna) | **tabela** com cabeçalho, linhas hairline e rodapé de total |
 | Formulários (Receita/Despesa) | **1 coluna** | **2 colunas** (a partir de `sm`) |
 | Saldo Final (Resumo) | 32px | 36px (`sm`) → 48px (`md`) |
@@ -304,10 +304,10 @@ até eles preencherem o nome pelo Perfil. Nada quebra por falta do nome.
 
 ### Cartão do usuário e Perfil (`/perfil`)
 - **Sidebar (desktop)**: no rodapé, um cartão com o **avatar** (inicial do *nome*; do e-mail se ainda
-  não há nome), **"Nome Sobrenome"** em destaque (truncado com reticências se longo), o **e-mail**
-  menor em cor secundária e o botão **Sair**. **Clicar no cartão** (menos no "Sair") abre o Perfil.
+  não há nome), **"Nome Sobrenome"** em destaque (truncado com reticências se longo) e o botão **Sair** embaixo
+  (**sem e-mail** no cartão; usuários antigos, sem nome, veem o e-mail no lugar do nome). **Clicar no cartão** (menos no "Sair") abre o Perfil.
 - **Celular**: a barra inferior continua só com as 4 telas. No topo, o **avatar** abre um menu com
-  o nome, o e-mail, **Perfil** e **Sair**.
+  o nome, **Perfil** e **Sair**. O e-mail só aparece no Perfil (somente leitura).
 - **Perfil** — seção **Dados**: editar *Nome* e *Sobrenome* (mesmas regras do cadastro); o e-mail só
   aparece, sem edição. *Salvar* mostra "Dados salvos." (verde) e o nome na sidebar atualiza na hora.
   Usuários antigos veem os campos vazios e podem preenchê-los pela primeira vez.

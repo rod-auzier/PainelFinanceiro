@@ -5,11 +5,12 @@
  * num menu aberto pelo avatar (círculo com a inicial), para não poluir a barra de baixo.
  *
  * Props:
- *  - user   {{ nome?, sobrenome?, email }}  usuário logado (usuários antigos sem nome usam o e-mail).
+ *  - user   {{ nome?, sobrenome?, email }}  usuário logado (usuários antigos sem nome usam o e-mail como nome).
  *  - onSair {() => void}                    chamado ao tocar em "Sair" (o logout é do AuthContext).
  *
  * Comportamento: o botão do avatar (44x44) abre/fecha um painel de fundo sólido com nome, e-mail,
- * "Perfil" (link para /perfil) e "Sair". Fecha ao tocar fora, com Esc ou ao escolher uma opção.
+ * "Perfil" (link para /perfil) e "Sair". O e-mail não aparece (só no Perfil); usuários antigos, sem
+ * nome, veem o e-mail no lugar do nome para o menu nunca ficar sem título. Fecha ao tocar fora, com Esc ou ao escolher uma opção.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -58,10 +59,10 @@ export default function MenuUsuario({ user, onSair }) {
           className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-border bg-surface p-2 shadow-lg"
         >
           <div className="border-b border-border px-3 pb-2 pt-1">
+            {/* Só o nome (sem e-mail). */}
             <p className="truncate text-sm font-medium" title={nomeExibido(user)}>
               {nomeExibido(user)}
             </p>
-            {user.nome && <p className="truncate text-xs text-muted">{user.email}</p>}
           </div>
           <Link to="/perfil" role="menuitem" onClick={() => setAberto(false)} className={`${ITEM} mt-1 text-fg`}>
             Perfil

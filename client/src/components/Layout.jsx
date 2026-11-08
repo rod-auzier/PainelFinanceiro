@@ -9,9 +9,9 @@
  *         ganha fundo, borda sutil, texto/ícone em amarelo e uma barrinha amarela de 3px
  *         encostada na borda esquerda da sidebar;
  *       • rodapé: cartão do usuário — avatar (inicial do NOME; do e-mail se ainda não tem nome),
- *         "Nome Sobrenome" em destaque (truncado) e o e-mail menor embaixo, mais o botão "Sair".
- *         Clicar no cartão (menos no "Sair") abre o Perfil (/perfil). Usuários antigos, sem nome,
- *         veem o e-mail como nome até preenchê-lo no Perfil.
+ *         "Nome Sobrenome" em destaque (truncado) e o botão "Sair" embaixo. O e-mail NÃO aparece
+ *         aqui (só no Perfil, em leitura); ele só é usado como nome por usuários antigos, sem nome,
+ *         para o cartão nunca ficar vazio. Clicar no cartão (menos no "Sair") abre o Perfil.
  *  - <  md (mobile) : sidebar some. No lugar entram:
  *       • uma barra fina no topo (título + avatar). O avatar abre um menu com Perfil e "Sair"
  *         (<MenuUsuario>), para a barra de baixo ficar só com as 4 telas, e
@@ -145,15 +145,11 @@ export default function Layout() {
                 <p className="truncate text-sm font-medium text-fg" title={nomeExibido(user)}>
                   {nomeExibido(user)}
                 </p>
-                {/* E-mail pequeno e secundário — só quando o nome é exibido (senão já é o título). */}
-                {user.nome && (
-                  <p className="truncate text-xs text-muted" title={user.email}>
-                    {user.email}
-                  </p>
-                )}
+                {/* Sem linha de e-mail: avatar, nome e "Sair" ficam centralizados na vertical
+                    (`items-center` no contêiner), sem sobrar espaço. O e-mail está só no Perfil. */}
                 <button
                   onClick={logout}
-                  className="pointer-events-auto relative mt-0.5 flex min-h-[28px] items-center text-xs font-medium text-accent hover:opacity-80"
+                  className="pointer-events-auto relative flex min-h-[28px] items-center text-xs font-medium text-accent hover:opacity-80"
                 >
                   Sair
                 </button>
