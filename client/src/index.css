@@ -79,7 +79,11 @@
          sumir suavemente até ~85%: aparece mais no centro-topo e some nos cantos.
      Performance: é uma camada estática (sem animação, sem JS); o navegador a pinta uma vez e a
      compõe na GPU, então rolar a página não a repinta. Os cards têm fundo sólido (bg-surface), por
-     isso a grade só aparece nas áreas livres entre e ao redor deles. */
+     isso a grade só aparece nas áreas livres entre e ao redor deles.
+     REGRA: todo bloco de conteúdo (card, formulário, tabela — o contêiner dela, já que linhas de
+     tabela não têm fundo —, lista, botão solto sobre a página) precisa de fundo SÓLIDO
+     (`bg-surface`; campos de texto, `bg-surface` ou `bg-bg`). Nunca transparente/`inherit`, ou a
+     grade aparece através dele. */
   body::before {
     content: '';
     position: fixed;

@@ -289,7 +289,9 @@ export default function ListaLancamentos({
       </ul>
 
       {/* ---------------- DESKTOP (>= md): tabela ---------------- */}
-      <div className="hidden overflow-x-auto rounded border border-border md:block">
+      {/* `bg-surface` SÓLIDO no contêiner: as linhas do corpo da tabela não têm fundo próprio e,
+          sem ele, a grade decorativa do fundo da página apareceria através delas. */}
+      <div className="hidden overflow-x-auto rounded border border-border bg-surface md:block">
         <table className="w-full text-sm">
           <thead className="bg-surface text-left text-muted">
             <tr>

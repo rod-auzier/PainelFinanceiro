@@ -238,7 +238,7 @@ export default function Metas() {
           <button
             type="button"
             onClick={() => recarregar()}
-            className="min-h-[44px] rounded border border-border px-4 text-sm text-fg hover:border-accent hover:text-accent"
+            className="min-h-[44px] rounded border border-border bg-surface px-4 text-sm text-fg hover:border-accent hover:text-accent"
           >
             Tentar de novo
           </button>
