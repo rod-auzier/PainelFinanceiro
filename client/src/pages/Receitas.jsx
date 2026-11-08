@@ -206,7 +206,8 @@ export default function Receitas() {
         getId={(r) => r._id}
         onExcluir={excluir}
         aoSalvarEdicao={salvarEdicao}
-        total={<Money value={total} tone="positive" className="font-medium" />}
+        // Total: valor maior (1,25x), negrito, verde — a linha é montada pelo <ListaLancamentos>.
+        total={<Money value={total} tone="positive" className="text-lg font-bold" />}
         vazio="Nenhuma receita neste mês."
         carregando={carregando}
         erro={erro}

@@ -71,6 +71,11 @@ export default function Despesas() {
   // Andamento dos pagamentos do mês (só informativo; não altera o total).
   const qtdPagas = despesas.filter((d) => d.paga).length;
   const qtdPendentes = despesas.length - qtdPagas;
+  // Soma das despesas pagas (só para os indicadores "Pago / Falta pagar" da linha de total).
+  const totalPago = useMemo(
+    () => despesas.reduce((soma, d) => soma + (d.paga ? Number(d.valor || 0) : 0), 0),
+    [despesas],
+  );
 
   function setCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -330,7 +335,20 @@ export default function Despesas() {
           titulo: 'Paga',
         }}
         apagado={(d) => Boolean(d.paga)}
-        total={<Money value={total} tone="negative" className="font-medium" />}
+        // Total: valor maior (1,25x), negrito, vermelho — a linha é montada pelo <ListaLancamentos>.
+        total={<Money value={total} tone="negative" className="text-lg font-bold" />}
+        // Indicadores compactos na mesma linha de total: "Pago" (secundário) e "Falta pagar" (amarelo).
+        // Só informativos (somam as despesas marcadas/não marcadas); o total acima não muda.
+        totalExtra={
+          <>
+            <span className="whitespace-nowrap text-muted">
+              Pago: <Money value={totalPago} className="font-medium" />
+            </span>
+            <span className="whitespace-nowrap text-accent">
+              Falta pagar: <Money value={Math.max(0, total - totalPago)} className="font-medium" />
+            </span>
+          </>
+        }
         vazio="Nenhuma despesa neste mês."
         carregando={carregando}
         erro={erro}

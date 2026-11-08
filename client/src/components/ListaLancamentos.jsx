@@ -38,6 +38,13 @@
  *  - apagado        {(item) => boolean}       (opcional) true = item "apagado" (levemente
  *      esmaecido): todos os campos, MENOS o valor (a última coluna), ficam com opacidade reduzida.
  *  - total          {ReactNode}               total já formatado (ex.: <Money>).
+ *  - totalExtra     {ReactNode}               (opcional) indicadores compactos na MESMA linha de total
+ *      (as Despesas passam "Pago: R$ X" e "Falta pagar: R$ Y"). Desktop: à esquerda do bloco
+ *      "Total + valor"; celular: numa segunda linha abaixo do total.
+ *
+ *  LINHA DE TOTAL: "Total" (cor secundária) e o valor ficam JUNTOS, no canto direito, com o valor
+ *  alinhado à coluna "Valor" acima. Fundo sólido um tom acima do card + borda superior mais
+ *  marcada, e é "sticky" (grudada no rodapé da tela enquanto a lista é longa).
  *  - vazio          {string}                  texto quando não há itens.
  *  - carregando     {boolean} / erro {string}
  */
@@ -124,6 +131,7 @@ export default function ListaLancamentos({
   marca,
   apagado,
   total,
+  totalExtra,
   vazio,
   carregando,
   erro,
@@ -281,17 +289,32 @@ export default function ListaLancamentos({
           );
         })}
 
-        {/* Total (card) */}
-        <li className="flex items-center justify-between rounded border border-border bg-surface px-4 py-3">
-          <span className="text-xs uppercase tracking-wide text-muted">Total</span>
-          {total}
+        {/* Total (card). "Total" e valor SEMPRE juntos na mesma linha (sem quebrar, `whitespace-nowrap`),
+            alinhados à direita; os indicadores extras (Pago / Falta pagar) vão numa 2ª linha embaixo.
+            Fundo sólido (um tom acima do card) e `sticky`: fica visível acima da barra inferior
+            (56px + área segura do iPhone) enquanto a lista rola. */}
+        <li
+          className="sticky bottom-[calc(56px+env(safe-area-inset-bottom))] rounded border border-border bg-[color-mix(in_srgb,var(--color-fg)_5%,var(--color-surface))] px-4 py-3 shadow-[inset_0_2px_0_0_color-mix(in_srgb,var(--color-muted)_45%,var(--color-surface))]"
+        >
+          <div className="flex items-baseline justify-end gap-3 whitespace-nowrap">
+            <span className="text-sm text-muted">Total</span>
+            {total}
+          </div>
+          {totalExtra && (
+            <div className="mt-1 flex flex-wrap items-baseline justify-end gap-x-4 gap-y-0.5 text-xs">
+              {totalExtra}
+            </div>
+          )}
         </li>
       </ul>
 
       {/* ---------------- DESKTOP (>= md): tabela ---------------- */}
+      {/* `overflow-x-clip` (e não `auto`): `auto` viraria um "contêiner de rolagem" e a linha de total
+          `sticky` ficaria presa a ele em vez de grudar no rodapé da tela. O `clip` continua
+          arredondando os cantos sem criar rolagem. */}
       {/* `bg-surface` SÓLIDO no contêiner: as linhas do corpo da tabela não têm fundo próprio e,
           sem ele, a grade decorativa do fundo da página apareceria através delas. */}
-      <div className="hidden overflow-x-auto rounded border border-border bg-surface md:block">
+      <div className="hidden overflow-x-clip rounded border border-border bg-surface md:block">
         <table className="w-full text-sm">
           <thead className="bg-surface text-left text-muted">
             <tr>
@@ -399,13 +422,24 @@ export default function ListaLancamentos({
             })}
           </tbody>
 
+          {/* Linha de TOTAL: cada célula é `sticky bottom-0` (sticky em <td> funciona em todos os
+              navegadores, ao contrário de <tfoot>) com fundo SÓLIDO e a borda superior marcada.
+              Estrutura: [indicadores extras ... "Total"] [valor] — o "Total" encosta no valor (12px)
+              e o valor cai exatamente sob a coluna "Valor" (mesmo padding direito das linhas acima).
+              A última célula cobre a coluna dos botões de editar/excluir. */}
           <tfoot>
-            <tr className="border-t border-border bg-surface">
-              <td className="p-3 font-medium" colSpan={Math.max(1, colunas.length - 1) + extra}>
-                Total
+            <tr>
+              <td
+                className="sticky bottom-0 bg-[color-mix(in_srgb,var(--color-fg)_5%,var(--color-surface))] shadow-[inset_0_2px_0_0_color-mix(in_srgb,var(--color-muted)_45%,var(--color-surface))] py-3 pl-3 pr-3"
+                colSpan={Math.max(1, colunas.length - 1) + extra}
+              >
+                <div className={`flex items-baseline gap-4 ${totalExtra ? 'justify-between' : 'justify-end'}`}>
+                  {totalExtra && <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs">{totalExtra}</div>}
+                  <span className="text-sm text-muted">Total</span>
+                </div>
               </td>
-              <td className="p-3 text-right">{total}</td>
-              <td />
+              <td className="sticky bottom-0 bg-[color-mix(in_srgb,var(--color-fg)_5%,var(--color-surface))] shadow-[inset_0_2px_0_0_color-mix(in_srgb,var(--color-muted)_45%,var(--color-surface))] whitespace-nowrap py-3 pl-0 pr-3 text-right">{total}</td>
+              <td className="sticky bottom-0 bg-[color-mix(in_srgb,var(--color-fg)_5%,var(--color-surface))] shadow-[inset_0_2px_0_0_color-mix(in_srgb,var(--color-muted)_45%,var(--color-surface))]" />
             </tr>
           </tfoot>
         </table>
