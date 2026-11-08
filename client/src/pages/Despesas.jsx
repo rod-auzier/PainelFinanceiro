@@ -254,17 +254,18 @@ export default function Despesas() {
         </div>
       )}
 
-      {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm`. */}
+      {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm` e, em telas largas (`xl`,
+          1280px+), UMA LINHA só: Descrição | Categoria | Valor | Repete | Adicionar. */}
       <form
         onSubmit={adicionar}
-        className="grid gap-3 rounded border border-border bg-surface p-4 sm:grid-cols-2"
+        className="grid gap-3 rounded border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto_auto] xl:items-center"
       >
         {/* Descrição ocupa a linha inteira no layout de 2 colunas. */}
         <input
           placeholder="Descrição"
           value={form.descricao}
           onChange={(e) => setCampo('descricao', e.target.value)}
-          className={`${INPUT} sm:col-span-2`}
+          className={`${INPUT} sm:col-span-2 xl:col-span-1`}
           required
         />
         <select
@@ -290,7 +291,7 @@ export default function Despesas() {
           required
         />
         {/* Despesa fixa: o servidor a cria sozinho nos meses seguintes (ao abri-los). */}
-        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base sm:col-span-2">
+        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 whitespace-nowrap text-base sm:col-span-2 xl:col-span-1 xl:px-2">
           <input
             type="checkbox"
             checked={form.recorrente}
@@ -299,10 +300,10 @@ export default function Despesas() {
           />
           Repete todo mês
         </label>
-        {erroForm && <p className="text-sm text-negative sm:col-span-2">{erroForm}</p>}
+        {erroForm && <p className="text-sm text-negative sm:col-span-2 xl:col-span-full">{erroForm}</p>}
         <button
           disabled={salvando}
-          className="min-h-[44px] rounded bg-accent px-4 font-medium text-bg hover:opacity-90 disabled:opacity-60 sm:col-span-2"
+          className="min-h-[44px] rounded bg-accent px-4 font-medium text-bg hover:opacity-90 disabled:opacity-60 sm:col-span-2 xl:col-span-1 xl:px-6"
         >
           {salvando ? 'Salvando…' : 'Adicionar despesa'}
         </button>

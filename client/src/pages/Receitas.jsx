@@ -142,10 +142,12 @@ export default function Receitas() {
         <SeletorMes mes={mes} onChange={trocarMes} />
       </div>
 
-      {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm`. */}
+      {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm` e, em telas largas (`xl`,
+          1280px+), UMA LINHA só: Fonte | Valor | Descrição | Repete | Adicionar. As colunas de
+          texto dividem o espaço (fr) e "Repete"/botão têm a largura do conteúdo (auto). */}
       <form
         onSubmit={adicionar}
-        className="grid gap-3 rounded border border-border bg-surface p-4 sm:grid-cols-2"
+        className="grid gap-3 rounded border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_auto_auto] xl:items-center"
       >
         <input
           placeholder="Fonte"
@@ -170,10 +172,10 @@ export default function Receitas() {
           placeholder="Descrição (opcional)"
           value={form.descricao}
           onChange={(e) => setCampo('descricao', e.target.value)}
-          className={`${INPUT} sm:col-span-2`}
+          className={`${INPUT} sm:col-span-2 xl:col-span-1`}
         />
         {/* Receita fixa: o servidor a cria sozinho nos meses seguintes (ao abri-los). */}
-        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-base sm:col-span-2">
+        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 whitespace-nowrap text-base sm:col-span-2 xl:col-span-1 xl:px-2">
           <input
             type="checkbox"
             checked={form.recorrente}
@@ -182,10 +184,10 @@ export default function Receitas() {
           />
           Repete todo mês
         </label>
-        {erroForm && <p className="text-sm text-negative sm:col-span-2">{erroForm}</p>}
+        {erroForm && <p className="text-sm text-negative sm:col-span-2 xl:col-span-full">{erroForm}</p>}
         <button
           disabled={salvando}
-          className="min-h-[44px] rounded bg-accent px-4 font-medium text-bg hover:opacity-90 disabled:opacity-60 sm:col-span-2"
+          className="min-h-[44px] rounded bg-accent px-4 font-medium text-bg hover:opacity-90 disabled:opacity-60 sm:col-span-2 xl:col-span-1 xl:px-6"
         >
           {salvando ? 'Salvando…' : 'Adicionar receita'}
         </button>

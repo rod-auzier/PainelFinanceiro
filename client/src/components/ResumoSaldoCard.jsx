@@ -39,10 +39,10 @@ export default function ResumoSaldoCard({ mes, resumo, anterior }) {
   const nomeAnterior = nomeDoMes(mes, -1);
 
   return (
-    <section className="h-full rounded border border-border bg-surface p-5 sm:p-6" aria-label="Saldo do mês">
+    <section className="h-full rounded border border-border bg-surface p-5 sm:p-6 lg:p-8" aria-label="Saldo do mês">
       <p className="text-xs uppercase tracking-wide text-muted">Saldo final</p>
       {/* Número grande: 32px no celular → 36px (`sm`) → 48px (`md`), sem estourar telas estreitas. */}
-      <Money value={resumo.saldo} tone="auto" className="mt-2 block text-[2rem] sm:text-4xl md:text-5xl" />
+      <Money value={resumo.saldo} tone="auto" className="mt-2 block text-[2rem] sm:text-4xl md:text-5xl lg:text-6xl" />
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`text-sm font-medium ${superavit ? 'text-positive' : 'text-negative'}`}>

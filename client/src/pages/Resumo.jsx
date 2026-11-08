@@ -134,13 +134,14 @@ export default function Resumo() {
         </p>
       )}
 
-      {/* Topo: card principal (2/3) + receitas e despesas (1/3). No celular, uma coluna. */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="md:col-span-2">
+      {/* Topo: card principal (2/3) + receitas e despesas (1/3). No celular, uma coluna.
+          Em telas largas (`lg`, 1024px+) vira uma grade de 12 colunas: saldo 8 + cards 4. */}
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-12">
+        <div className="md:col-span-2 lg:col-span-8">
           <ResumoSaldoCard mes={mes} resumo={resumo} anterior={anterior} />
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-4 lg:col-span-4">
           <ResumoTotalCard
             tipo="receita"
             valor={resumo.totalReceitas}
@@ -158,7 +159,7 @@ export default function Resumo() {
         </div>
       </div>
 
-      {/* Abaixo, em duas colunas no desktop: rosca + lista | maiores despesas. */}
+      {/* Abaixo, em duas colunas no desktop (6 + 6 de 12): rosca + lista | maiores despesas. */}
       <div className="grid gap-4 md:grid-cols-2">
         <CategoriasDonut despesas={despesas} />
         <MaioresDespesas despesas={despesas} />

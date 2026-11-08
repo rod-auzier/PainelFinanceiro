@@ -254,13 +254,17 @@ export default function Metas() {
         </div>
       ) : (
         <div className="space-y-6">
-          {pendentes.length > 0 && <ul className="space-y-2">{pendentes.map(renderItem)}</ul>}
+          {/* Em telas largas (`xl`, 1280px+) as metas ficam em 2 colunas (a ordem segue linha a linha);
+              abaixo disso, uma coluna. `items-start`: cada meta mantém a própria altura. */}
+          {pendentes.length > 0 && (
+            <ul className="grid gap-2 xl:grid-cols-2 xl:items-start">{pendentes.map(renderItem)}</ul>
+          )}
 
           {/* Concluídas ficam embaixo, sob um rótulo discreto. */}
           {concluidas.length > 0 && (
             <section>
               <h2 className="mb-2 text-xs uppercase tracking-wide text-muted">Concluídas</h2>
-              <ul className="space-y-2">{concluidas.map(renderItem)}</ul>
+              <ul className="grid gap-2 xl:grid-cols-2 xl:items-start">{concluidas.map(renderItem)}</ul>
             </section>
           )}
         </div>

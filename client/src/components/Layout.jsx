@@ -150,8 +150,12 @@ export default function Layout() {
       </header>
 
       {/* ===================== CONTEÚDO ===================== */}
-      <main className="flex-1 px-4 py-6 sm:px-6 md:ml-56 md:px-8 pb-24 md:pb-8">
-        <div className="mx-auto max-w-4xl">
+      {/* LARGURA DA ÁREA DE CONTEÚDO: até 1400px, centrada. Até ~1280px ocupa tudo o que sobra
+          (janela − sidebar − padding); em telas muito largas (> 1800px) o limite de 1400px evita
+          esticar demais. Padding lateral: 16/24px no celular, 32px (`md`) e 40px (`lg`). `min-w-0`
+          deixa o <main> encolher dentro do flex (sem rolagem horizontal). */}
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 md:ml-56 md:px-8 lg:px-10 pb-24 md:pb-8">
+        <div className="mx-auto max-w-[1400px]">
           <Outlet />
         </div>
       </main>
