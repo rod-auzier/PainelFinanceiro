@@ -2,9 +2,10 @@
  * Tela de Metas (rota `/metas`, dentro do <Layout>).
  *
  * Responsabilidades:
- *  - mostrar o TOTAL GUARDADO (GET /api/guardado): saldo inicial + (receitas −
- *    despesas de todos os meses), com o campo "Saldo inicial guardado"
- *    editável (PUT /api/guardado) — <GuardadoCard>;
+ *  - mostrar, num card COMPACTO no topo, o "Total guardado" e a "Média guardada por mês" (vêm junto
+ *    de GET /api/metas), com o link "Ver Porquinho". O total = soma das caixinhas + (receitas −
+ *    despesas dos meses fechados); a composição completa e as caixinhas ficam na aba Porquinho
+ *    (o antigo campo "Saldo inicial guardado" deu lugar às caixinhas);
  *  - listar as metas (GET /api/metas via useRecurso). Cada meta pode ter um
  *    valor (R$); as que têm mostram barra de progresso, porcentagem e
  *    "R$ X de R$ Y" (progresso = min(total guardado / valor, 100%));
@@ -29,9 +30,10 @@
  * Cores/tipografia: tokens do tema (ver `src/index.css`).
  */
 import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
-import GuardadoCard from '../components/GuardadoCard.jsx';
+import Money from '../components/Money.jsx';
 import MetaItem from '../components/MetaItem.jsx';
 import { ordenarMetas } from '../lib/metas.js';
 import { textoPrevisao } from '../lib/previsao.js';
@@ -46,7 +48,7 @@ const TITULO_MAX = 200; // mesmo limite do backend (models/Meta.js)
 const mensagemDeErro = (err, padrao) => err.response?.data?.message || padrao;
 
 export default function Metas() {
-  const [guardado, setGuardado] = useState(null); // { saldoInicial, saldoAcumulado, total, emAndamento }
+  const [guardado, setGuardado] = useState(null); // { totalCaixinhas, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }
   const [titulo, setTitulo] = useState('');
   const [valor, setValor] = useState('');
   const [adicionando, setAdicionando] = useState(false);
@@ -148,17 +150,6 @@ export default function Metas() {
     setMetas((atual) => atual.map((m) => (m._id === meta._id ? data.meta : m)));
   }
 
-  /**
-   * Salva o "Saldo inicial guardado" (PUT). O total muda, então o servidor pode
-   * ter concluído metas — recarregamos a lista em silêncio para refletir isso.
-   * (A recarga traz o total guardado junto; o PUT já devolveu o novo total.)
-   */
-  async function salvarSaldoInicial(saldoInicial) {
-    const { data } = await api.put('/guardado', { saldoInicial });
-    setGuardado(data);
-    await recarregar({ silencioso: true });
-  }
-
   const total = guardado?.total ?? 0;
 
   const renderItem = (m) => (
@@ -187,10 +178,35 @@ export default function Metas() {
         )}
       </div>
 
-      {/* Total guardado + saldo inicial editável */}
-      {/* Some se a carga falhou (aí aparece o erro com "Tentar de novo" mais abaixo). */}
-      {(guardado || carregando) && (
-        <GuardadoCard guardado={guardado} onSalvarSaldoInicial={salvarSaldoInicial} />
+      {/* Card COMPACTO do total guardado (base das barras de progresso e da previsão). A composição
+          completa e as caixinhas ficam no Porquinho. Some se a carga falhou. */}
+      {guardado && (
+        <section
+          className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded border border-border bg-surface p-4"
+          aria-label="Total guardado"
+        >
+          <div className="space-y-1 text-sm">
+            <p>
+              <span className="text-muted">Total guardado: </span>
+              <Money value={guardado.total} tone="auto" className="text-base font-semibold" />
+            </p>
+            {/* Média: só existe com ao menos 1 mês fechado. */}
+            {guardado.mediaMensal != null && guardado.mesesFechados > 0 && (
+              <p className="text-muted">
+                Média guardada por mês: <Money value={guardado.mediaMensal} tone="auto" />{' '}
+                <span className="text-xs">
+                  (base: {guardado.mesesFechados} {guardado.mesesFechados === 1 ? 'mês' : 'meses'})
+                </span>
+              </p>
+            )}
+          </div>
+          <Link
+            to="/porquinho"
+            className="flex min-h-[44px] items-center text-sm font-medium text-accent hover:opacity-80"
+          >
+            Ver Porquinho →
+          </Link>
+        </section>
       )}
 
       {/* Título + valor opcional + botão. Enter dentro de um input envia o <form>. */}

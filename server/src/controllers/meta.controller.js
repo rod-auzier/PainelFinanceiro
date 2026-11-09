@@ -6,7 +6,7 @@
  * nem apaga metas de outro.
  *
  * Metas podem ter um `valorAlvo` (R$). Nesse caso, quando o TOTAL GUARDADO
- * (saldo inicial + receitas − despesas dos MESES FECHADOS, ver services/guardado.js) atinge o
+ * (soma das caixinhas + receitas − despesas dos MESES FECHADOS, ver services/guardado.js) atinge o
  * alvo, a meta é marcada como concluída automaticamente. Essa sincronização
  * roda ao listar, criar e atualizar metas, então as respostas já refletem o
  * estado atual.
@@ -70,7 +70,7 @@ function validarValorAlvo(valor) {
  * @returns {200} `{ metas: Array<{ _id, userId, titulo, concluida, valorAlvo, alvoAtingido, createdAt, updatedAt }>, guardado }`
  *               `metas` ordenado por `createdAt` (mais recentes primeiro); `valorAlvo` é `null` nas
  *               metas sem valor. A separação pendentes/concluídas é feita no frontend.
- *               `guardado` = `{ saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` (mesmo formato de
+ *               `guardado` = `{ totalCaixinhas, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` (mesmo formato de
  *               GET /api/guardado, só meses fechados) — vai junto para a tela de Metas precisar de UMA
  *               chamada só (duas chamadas simultâneas disputariam a geração de fixos). É `null` se o
  *               cálculo falhou (a lista é devolvida mesmo assim).

@@ -18,10 +18,13 @@
  *             novas tentativas por alguns minutos. `select: false`: internos, nunca vão para a API.
  *             Ficam no banco (e não na memória) porque na Vercel cada requisição pode cair numa
  *             instância diferente da função serverless.
- *  - saldoInicial : "Saldo inicial guardado" — quanto o usuário já tinha guardado
- *             ANTES de usar o painel (um único número por usuário, editável na aba
- *             Metas). É somado ao resultado (receitas − despesas) para formar o
- *             "Total guardado". Padrão 0.
+ *  - saldoInicial : LEGADO — o antigo "Saldo inicial guardado" (um único número, que era editado na
+ *             aba Metas). NÃO entra mais no Total guardado: foi substituído pela soma das CAIXINHAS
+ *             (aba Porquinho). O campo é mantido no banco (nunca apagado nem alterado) e é lido uma
+ *             única vez, na transição: vira a caixinha "Saldo inicial" (services/caixinhas.js).
+ *  - caixinhasMigradas : `true` depois que essa transição rodou para o usuário — impede que a
+ *             caixinha "Saldo inicial" seja criada de novo. Ausente/`false` em quem ainda não abriu
+ *             o app desde a mudança.
  *
  * `timestamps: true` adiciona automaticamente `createdAt` e `updatedAt`.
  *
@@ -63,6 +66,8 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: [0, 'saldoInicial não pode ser negativo'],
     },
+    // Marca da transição saldo inicial → caixinhas (ver services/caixinhas.js).
+    caixinhasMigradas: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

@@ -14,9 +14,9 @@
  *         para o cartão nunca ficar vazio. Clicar no cartão (menos no "Sair") abre o Perfil.
  *  - <  md (mobile) : sidebar some. No lugar entram:
  *       • uma barra fina no topo (título + avatar). O avatar abre um menu com Perfil e "Sair"
- *         (<MenuUsuario>), para a barra de baixo ficar só com as 4 telas, e
+ *         (<MenuUsuario>), para a barra de baixo ficar só com as 5 telas, e
  *       • uma BOTTOM NAV fixa no rodapé da tela, com os mesmos itens e ÍCONES da sidebar
- *         (Resumo, Receitas, Despesas, Metas — a lista NAV abaixo alimenta as duas), o ícone
+ *         (Resumo, Receitas, Despesas, Porquinho, Metas — a lista NAV abaixo alimenta as duas), o ícone
  *         acima do rótulo e o item ativo em amarelo.
  *    O <main> ganha `pb-24` no mobile para o conteúdo não ficar atrás da
  *    bottom nav (`md:pb-6` volta ao normal no desktop).
@@ -34,13 +34,14 @@ import MenuUsuario from './MenuUsuario.jsx';
 import { CategoriasProvider } from '../context/CategoriasContext.jsx';
 import { inicialDoUsuario, nomeExibido } from '../lib/usuario.js';
 
-// Ordem do menu (sidebar e bottom nav): Resumo, Receitas, Despesas, Metas. O Resumo vem
+// Ordem do menu (sidebar e bottom nav): Resumo, Receitas, Despesas, Porquinho, Metas. O Resumo vem
 // primeiro por ser a página inicial (a raiz "/" e o pós-login levam a /resumo — ver App.jsx,
 // Login.jsx e Registro.jsx). Só a ordem importa aqui; as rotas e os ícones não mudam.
 const NAV = [
   { to: '/resumo', label: 'Resumo' },
   { to: '/receitas', label: 'Receitas' },
   { to: '/despesas', label: 'Despesas' },
+  { to: '/porquinho', label: 'Porquinho' }, // caixinhas: onde o dinheiro guardado está
   { to: '/metas', label: 'Metas' },
 ];
 
@@ -61,7 +62,8 @@ function classeSidebar({ isActive }) {
 // Item da bottom nav (mobile). 56px de altura → toque folgado (mínimo recomendado: 44px).
 function classeBottom({ isActive }) {
   return [
-    'flex flex-1 flex-col items-center justify-center gap-1 py-2 min-h-[56px] text-xs',
+    // `min-w-0`: com 5 itens no celular, cada um encolhe por igual (sem rolagem horizontal).
+    'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 min-h-[56px] text-xs',
     isActive ? 'text-accent' : 'text-muted',
   ].join(' ');
 }
@@ -163,7 +165,7 @@ export default function Layout() {
       {/* ===================== TOP BAR — só em < md ===================== */}
       <header className="flex items-center justify-between border-b border-border bg-surface px-4 md:hidden">
         <span className="font-semibold tracking-tight">Painel Financeiro</span>
-        {/* Avatar com menu (Perfil / Sair): mantém a barra inferior só com as 4 telas. */}
+        {/* Avatar com menu (Perfil / Sair): mantém a barra inferior só com as 5 telas. */}
         <MenuUsuario user={user} onSair={logout} />
       </header>
 

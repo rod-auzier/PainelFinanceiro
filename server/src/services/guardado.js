@@ -2,8 +2,10 @@
  * "Total guardado" e conclusão automática das Metas.
  *
  * REGRA DOS MESES FECHADOS
- *   TOTAL GUARDADO = saldo inicial guardado (campo do usuário)
+ *   TOTAL GUARDADO = Σ valores das CAIXINHAS do usuário (aba Porquinho; saldo em 01/10/2026)
  *                  + Σ (receitas − despesas) de cada mês FECHADO
+ *   (As caixinhas substituíram o antigo campo único "saldo inicial guardado"; a transição é feita
+ *   em services/caixinhas.js, antes de somar, para o total não mudar.)
  *   Mês fechado = de MES_INICIAL (outubro/2026) até o mês ANTERIOR ao mês atual. O mês
  *   atual (em andamento) e os futuros NÃO entram. Exemplo: hoje é 07/11/2026 → só
  *   outubro conta; novembro passa a entrar em 01/12/2026, dezembro em 01/01/2027…
@@ -39,7 +41,7 @@
 import { Receita } from '../models/Receita.js';
 import { Despesa } from '../models/Despesa.js';
 import { Meta } from '../models/Meta.js';
-import { User } from '../models/User.js';
+import { garantirMigracaoCaixinhas, somarCaixinhas } from './caixinhas.js';
 import { garantirFixosAteMesAtual } from './fixos.js';
 import { somarMesesFechados, somarValor } from './totais.js';
 import { MES_INICIAL, mesAtual, mesSeguinte, mesesEntre } from '../utils/mes.js';
@@ -55,7 +57,7 @@ export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
  * @param   {string} [hoje]  mês atual "AAAA-MM" (padrão: `mesAtual()`, fuso America/Fortaleza).
  *                           Parâmetro para testes.
  * @returns {Promise<{
- *   saldoInicial: number,
+ *   totalCaixinhas: number,
  *   saldoAcumulado: number,
  *   total: number,
  *   mesesFechados: number,
@@ -63,7 +65,8 @@ export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
  *   emAndamento: null | { mes: string, receitas: number, despesas: number, saldo: number, entraEm: string }
  * }>}
  *   - `saldoAcumulado` = receitas − despesas dos meses FECHADOS (de MES_INICIAL ao mês anterior ao atual);
- *   - `total`          = saldoInicial + saldoAcumulado (o mês em andamento NÃO está incluído);
+ *   - `totalCaixinhas` = soma dos valores das caixinhas (antes: o "saldo inicial guardado");
+ *   - `total`          = totalCaixinhas + saldoAcumulado (o mês em andamento NÃO está incluído);
  *   - `mesesFechados`  = quantos meses fechados existem (de MES_INICIAL ao mês anterior ao atual; 0 no 1º mês);
  *   - `mediaMensal`    = saldoAcumulado ÷ mesesFechados (média guardada por mês; negativa se gastou
  *                        mais do que recebeu), ou `null` quando `mesesFechados` é 0;
@@ -74,26 +77,27 @@ export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
  */
 export async function calcularGuardado(userId, hoje = mesAtual()) {
   await garantirFixosAteMesAtual(userId, hoje);
+  await garantirMigracaoCaixinhas(userId); // 1ª vez: saldo inicial antigo → caixinha "Saldo inicial"
 
   const painelComecou = hoje >= MES_INICIAL;
-  const [usuario, receitasFechadas, despesasFechadas, receitasMes, despesasMes] = await Promise.all([
-    User.findById(userId).select('saldoInicial'),
+  const [somaCaixinhas, receitasFechadas, despesasFechadas, receitasMes, despesasMes] = await Promise.all([
+    somarCaixinhas(userId),
     somarMesesFechados(Receita, userId, hoje),
     somarMesesFechados(Despesa, userId, hoje),
     painelComecou ? somarValor(Receita, userId, hoje) : 0,
     painelComecou ? somarValor(Despesa, userId, hoje) : 0,
   ]);
 
-  const saldoInicial = arredondar(usuario?.saldoInicial ?? 0);
+  const totalCaixinhas = arredondar(somaCaixinhas);
   const saldoAcumulado = arredondar(receitasFechadas - despesasFechadas);
   // Meses fechados: de MES_INICIAL (inclusive) até o mês atual (exclusive). 0 em outubro/2026.
   const mesesFechados = mesesEntre(MES_INICIAL, hoje);
   const mediaMensal = mesesFechados > 0 ? arredondar(saldoAcumulado / mesesFechados) : null;
 
   return {
-    saldoInicial,
+    totalCaixinhas,
     saldoAcumulado,
-    total: arredondar(saldoInicial + saldoAcumulado),
+    total: arredondar(totalCaixinhas + saldoAcumulado),
     mesesFechados,
     mediaMensal,
     emAndamento: painelComecou

@@ -66,10 +66,21 @@ export const IconeMetas = (props) => (
   </Icone>
 );
 
+/** Porquinho — cofrinho (porquinho de perfil com focinho, orelha, patas e o rabinho à esquerda).
+ *  Desenho no estilo do ícone "PiggyBank" do lucide, refeito aqui porque o projeto não usa a lib. */
+export const IconePorquinho = (props) => (
+  <Icone {...props}>
+    <path d="M11 17h3v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a3.16 3.16 0 0 0 2-2h1a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-1a5 5 0 0 0-2-4V3a4 4 0 0 0-3.2 1.6l-.3.4H11a6 6 0 0 0-6 6v1a5 5 0 0 0 2 4v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z" />
+    <path d="M16 10h.01" />
+    <path d="M2 8v1a2 2 0 0 0 2 2h1" />
+  </Icone>
+);
+
 /** Rota → ícone. As chaves são as mesmas rotas da lista NAV do Layout. */
 export const ICONE_NAV = {
   '/receitas': IconeReceitas,
   '/despesas': IconeDespesas,
   '/resumo': IconeResumo,
+  '/porquinho': IconePorquinho,
   '/metas': IconeMetas,
 };

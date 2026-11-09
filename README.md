@@ -79,6 +79,7 @@ Finanças/
 │       ├── lib/
 │       │   ├── format.js       # brl()
 │       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
+│       │   ├── caixinhas.js    # caixinhas: cores pela ordem de criação, soma, ordenação, validação
 │       │   ├── constants.js    # categorias: padrão (provisórias), PALETA_CORES, "Outros", validação do nome
 │       │   ├── previsao.js     # previsão das metas ("No ritmo atual, chega em mar/2027") — funções puras
 │       ├── hooks/
@@ -96,7 +97,9 @@ Finanças/
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
 │       │   ├── IconesNav.jsx                # ícones de linha (SVG inline) do menu
 │       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
-│       │   ├── GuardadoCard.jsx             # "Total guardado" + campo Saldo inicial guardado
+│       │   ├── GuardadoCard.jsx             # Porquinho: card "Total guardado" com a composição
+│       │   ├── BarraCaixinhas.jsx           # Porquinho: barra empilhada + legenda (nome e %)
+│       │   ├── CaixinhaItem.jsx             # Porquinho: caixinha (cor, nome, valor, editar, excluir com confirmação)
 │       │   ├── MetaItem.jsx                 # meta: checkbox grande, barra de progresso, editar, lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
 │       │   ├── SeletorMes.jsx               # ‹ mês › — navegação entre meses (Receitas/Despesas/Resumo)
@@ -115,7 +118,8 @@ Finanças/
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
 │           ├── Despesas.jsx    # Formulário + tabela + total de despesas + seção Categorias
 │           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
-│           └── Metas.jsx       # Total guardado + metas com valor/progresso (atualização otimista)
+│           ├── Porquinho.jsx   # Caixinhas + total guardado (atualização otimista)
+│           └── Metas.jsx       # card compacto do total + metas com valor/progresso (atualização otimista)
 │
 └── server/                     # Backend (Node.js + Express + Mongoose)
     ├── package.json
@@ -128,7 +132,8 @@ Finanças/
         │   ├── env.js          # Lê e valida variáveis de ambiente
         │   └── db.js           # Conexão Mongoose cacheada (serverless-safe)
         ├── models/
-        │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), saldoInicial }
+        │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), nome, sobrenome, saldoInicial (legado), caixinhasMigradas }
+        │   ├── Caixinha.js     # { userId, nome (2–30), valor ≥ 0, createdAt } — aba Porquinho
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
         │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, createdAt }
         │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
@@ -144,6 +149,7 @@ Finanças/
         │   ├── fixos.js        # geração AUTOMÁTICA dos fixos do mês (idempotente, com marcador único)
         │   ├── totais.js       # somarValor / somarMesesFechados: somas de receitas/despesas (aggregation)
         │   ├── guardado.js     # total guardado (só meses fechados) + parcial do mês + conclusão automática das metas
+        │   ├── caixinhas.js    # transição do saldo inicial → caixinha "Saldo inicial" (1 vez) + soma
         │   └── categorias.js   # categorias padrão no 1º acesso, "Outros" protegida, contagem de despesas por categoria
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
@@ -151,7 +157,8 @@ Finanças/
         │   ├── despesa.controller.js  # listar, criar, atualizar, remover (por userId)
         │   ├── resumo.controller.js   # agrega totais (aggregation MongoDB)
         │   ├── meta.controller.js     # listar, criar, atualizar (PATCH), remover (por userId)
-        │   ├── guardado.controller.js # total guardado e saldo inicial
+        │   ├── guardado.controller.js # total guardado (GET)
+        │   ├── caixinha.controller.js # listar (+ total guardado), criar, editar, excluir (por userId)
         │   └── categoria.controller.js # listar, criar, renomear/recolorir, excluir (por userId)
         └── routes/
             ├── index.js           # Agrupa as rotas sob /api (+ /health)
@@ -161,6 +168,7 @@ Finanças/
             ├── resumo.routes.js   # /api/resumo    (protegida)
             ├── meta.routes.js     # /api/metas     (protegida)
             ├── guardado.routes.js # /api/guardado  (protegida)
+            ├── caixinha.routes.js # /api/caixinhas (protegida)
             └── categoria.routes.js # /api/categorias (protegida)
 ```
 
@@ -284,7 +292,7 @@ estão comentados no código:
 
 | Elemento | `< md` (mobile) | `>= md` (desktop) |
 |---|---|---|
-| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (4 itens, ícone acima do rótulo, ativo em amarelo) + barra fina no topo com o avatar (menu: Perfil e Sair) | **sidebar** lateral fixa (14rem): marca (logo + "Painel Financeiro" / "Controle pessoal"), rótulo "MENU", itens com ícone (ativo: fundo, borda, amarelo e barrinha de 3px na borda esquerda) e cartão do usuário (avatar com a inicial, nome, "Sair") no rodapé |
+| Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (5 itens, ícone acima do rótulo, ativo em amarelo) + barra fina no topo com o avatar (menu: Perfil e Sair) | **sidebar** lateral fixa (14rem): marca (logo + "Painel Financeiro" / "Controle pessoal"), rótulo "MENU", itens com ícone (ativo: fundo, borda, amarelo e barrinha de 3px na borda esquerda) e cartão do usuário (avatar com a inicial, nome, "Sair") no rodapé |
 | Listas de Receitas/Despesas ([ListaLancamentos.jsx](client/src/components/ListaLancamentos.jsx)) | **cards empilhados** (label + valor em coluna) | **tabela** com cabeçalho, linhas hairline e rodapé de total |
 | Formulários (Receita/Despesa) | **1 coluna** | **2 colunas** (a partir de `sm`) |
 | Saldo Final (Resumo) | 32px | 36px (`sm`) → 48px (`md`) |
@@ -298,7 +306,7 @@ automático do iOS ao focar); botões e itens de navegação com **≥ 44×44px*
 ## Uso das telas (frontend)
 
 O app tem **duas telas públicas** (Login e Registro) e, após autenticar,
-a navegação para Resumo (página inicial — `/` e o login levam a `/resumo`), Receitas, Despesas e Metas, nessa ordem (sidebar no desktop, bottom
+a navegação para Resumo (página inicial — `/` e o login levam a `/resumo`), Receitas, Despesas, Porquinho (ícone de cofrinho) e Metas, nessa ordem (sidebar no desktop, bottom
 nav no celular — ver [Responsividade](#responsividade)). O token JWT fica
 no `localStorage`; use "Sair" para descartá-lo.
 
@@ -316,7 +324,7 @@ até eles preencherem o nome pelo Perfil. Nada quebra por falta do nome.
 - **Sidebar (desktop)**: no rodapé, um cartão com o **avatar** (inicial do *nome*; do e-mail se ainda
   não há nome), **"Nome Sobrenome"** em destaque (truncado com reticências se longo) e o botão **Sair** embaixo
   (**sem e-mail** no cartão; usuários antigos, sem nome, veem o e-mail no lugar do nome). **Clicar no cartão** (menos no "Sair") abre o Perfil.
-- **Celular**: a barra inferior continua só com as 4 telas. No topo, o **avatar** abre um menu com
+- **Celular**: a barra inferior continua só com as 5 telas. No topo, o **avatar** abre um menu com
   o nome, **Perfil** e **Sair**. O e-mail só aparece no Perfil (somente leitura).
 - **Perfil** — seção **Dados**: editar *Nome* e *Sobrenome* (mesmas regras do cadastro); o e-mail só
   aparece, sem edição. *Salvar* mostra "Dados salvos." (verde) e o nome na sidebar atualiza na hora.
@@ -477,9 +485,9 @@ em diante. A constante vive em um único lugar por lado: `server/src/utils/mes.j
   um mês antigo guardado na sessão é ajustado para outubro/2026.
 - A API recusa (`400`) `?mes=` ou `mes` anteriores a `2026-10`; listas e somas **sem**
   `mes` só enxergam lançamentos de outubro/2026 em diante.
-- O **total guardado** das Metas considera só lançamentos de outubro/2026 em diante
+- O **total guardado** (Porquinho e Metas) considera só lançamentos de outubro/2026 em diante
   **e só meses fechados** (ver [Total guardado: só meses fechados](#total-guardado-só-meses-fechados)),
-  mais o "Saldo inicial guardado".
+  mais a soma das caixinhas.
 
 **Fixos automáticos (feitos no backend)** — lançamentos com "Repete todo mês" são
 criados sozinhos ao abrir um mês (`GET /api/receitas|despesas?mes=` e `GET /api/resumo?mes=`):
@@ -499,9 +507,9 @@ O "total guardado" também garante a geração de todos os meses até o atual an
 
 ### Total guardado: só meses fechados
 
-O **Total guardado** das Metas conta apenas **meses fechados**:
+O **Total guardado** (Porquinho e Metas) conta apenas **meses fechados**:
 
-> **Total guardado = Saldo inicial guardado + Σ (receitas − despesas) de cada mês, de outubro/2026
+> **Total guardado = Σ valores das caixinhas + Σ (receitas − despesas) de cada mês, de outubro/2026
 > (`MES_INICIAL`) até o mês ANTERIOR ao mês atual.** O mês em andamento **não entra** no total.
 
 Exemplo — hoje é 07/11/2026: **entra outubro**; novembro só passa a entrar em **01/12/2026**,
@@ -515,9 +523,9 @@ aberto** — só quando ele fecha.
   automática de fixos e pela criação de lançamentos. O mês vira à meia-noite de Fortaleza
   (ex.: às 23h59 de 30/11 ainda é novembro, mesmo que em UTC já seja dezembro).
 - O resultado **parcial do mês em andamento** é devolvido à parte (`emAndamento` em `GET /api/guardado`)
-  só para exibir: na tela de Metas aparece uma linha discreta — *"Mês em andamento (novembro/2026),
+  só para exibir: no Porquinho aparece uma linha discreta — *"Mês em andamento (novembro/2026),
   entra em 01/12/2026: R$ X"* — com o nome do mês e a data calculados dinamicamente.
-- Antes de outubro/2026 (painel ainda não começou) o total é só o saldo inicial e não há mês em andamento.
+- Antes de outubro/2026 (painel ainda não começou) o total é só a soma das caixinhas e não há mês em andamento.
 
 ### Limpeza dos meses anteriores a outubro/2026 (script manual)
 
@@ -538,25 +546,62 @@ npm run limpar:antigos -- --email=voce@exemplo.com --confirmar  # apaga de verda
   nunca são tocados** (o script mostra quantos serão preservados e confere as contagens depois).
 - Comece sempre pelo dry-run, leia a lista e só então rode com `--confirmar`.
 
+### Porquinho (`/porquinho`)
+Onde o dinheiro guardado está: você cadastra **caixinhas** — cada lugar onde guarda dinheiro, com
+nome e valor (ex.: "Caixinha Nubank" R$ 10.000, "Caixinha Mercado Livre" R$ 10.000, "Carteira
+Binance" R$ 30.000). A **soma das caixinhas** substituiu o antigo campo único "Saldo inicial
+guardado" da aba Metas.
+
+**Card "Total guardado"** (topo): valor grande em verde e a composição —
+*Caixinhas (saldo em 01/10/2026)*, *Receitas − despesas (meses fechados, desde out/2026)*,
+*Média guardada por mês (base: N meses)* (só com ao menos 1 mês fechado) e, discreta, *Mês em
+andamento (novembro/2026), entra em 01/12/2026* (parcial, ainda fora do total). Ver
+[Total guardado: só meses fechados](#total-guardado-só-meses-fechados).
+
+**Seção "Caixinhas"**
+- **Barra empilhada** horizontal com a proporção de cada caixinha no total delas, uma cor por
+  caixinha, e legenda com nome e %. As cores são as da paleta das categorias (tons discretos, sem
+  verde/vermelho puros) e seguem a **ordem de criação** — a cor de uma caixinha não muda quando os
+  valores mudam (com mais de 10 caixinhas a paleta recomeça).
+- **Lista** da **maior para a menor** (cards em 2 colunas no desktop, 1 no celular): bolinha de cor,
+  nome, valor em fonte mono, **editar** (nome e valor viram campos ali mesmo; Enter salva, Esc cancela)
+  e **excluir** (com confirmação na própria linha).
+- **Adicionar caixinha**: nome (placeholder "Ex.: Caixinha Nubank"), valor (R$) e *Adicionar* — Enter
+  também adiciona. Contador "N de 20".
+- **Estado vazio** amigável quando não há caixinhas.
+- **Atualização otimista** em criar, editar e excluir: a tela muda na hora (o total também, porque é
+  calculado a partir da lista na tela) e, se a API falhar, volta ao estado anterior e mostra o erro.
+- **Regras** (validadas no servidor): nome de **2 a 30 caracteres**, valor **número ≥ 0**, **no
+  máximo 20 caixinhas** por usuário.
+
+**Transição do antigo "Saldo inicial guardado" (sem migração em massa)**
+- O campo `saldoInicial` do usuário **continua no banco** (não foi apagado nem alterado), mas não
+  entra mais no total.
+- Na **primeira vez** que o total guardado ou as caixinhas são consultados depois da mudança
+  (abrir o Porquinho ou as Metas), se o usuário tem saldo inicial **maior que zero** e
+  **nenhuma caixinha**, o servidor cria **uma** caixinha **"Saldo inicial"** com esse valor e grava
+  `caixinhasMigradas: true` no usuário. Assim o total guardado de hoje **não muda**.
+- Acontece **uma única vez**: nunca duplica (índice único parcial na caixinha migrada, mesmo com
+  duas telas abertas ao mesmo tempo) e, se você excluir ou renomear essa caixinha, ela não volta.
+- Roda também ao calcular o total pelas Metas (não só no Porquinho) para o total nunca "perder" o
+  saldo inicial, seja qual for a primeira tela aberta.
+
+Dados: **uma** chamada, `GET /api/caixinhas`, traz as caixinhas e o total guardado juntos.
+
 ### Metas (`/metas`)
 Objetivos pessoais com checkbox ("quadradinho") e, opcionalmente, um **valor** que
 vira barra de progresso.
 
-**Total guardado** (card no topo)
-- Fórmula: **saldo inicial guardado + (receitas − despesas) dos MESES FECHADOS**, de outubro/2026 até o
-  mês anterior ao atual — o mês em andamento não entra (ver
-  [Total guardado: só meses fechados](#total-guardado-só-meses-fechados)).
-- Linhas do card: *Saldo inicial guardado*, *Receitas − despesas (meses fechados, desde out/2026)* e,
-  discreta, *Mês em andamento (novembro/2026), entra em 01/12/2026: R$ X* (parcial, ainda fora do total).
-- **Média guardada por mês**: linha "Média guardada por mês: R$ X (base: N meses fechados)". É a
-  **média de (receitas − despesas) por mês fechado** — mesma regra do total: de outubro/2026 ao mês
-  anterior ao atual, o mês atual **não entra** (fuso America/Fortaleza). Calculada **no backend**
-  (`mediaMensal` e `mesesFechados` em `GET /api/guardado` e no `guardado` de `GET /api/metas`;
-  `services/guardado.js`). Com só 1 mês fechado a base diz "(base: 1 mês)" — estimativa fraca;
-  sem nenhum mês fechado (outubro/2026) a linha não aparece. O saldo inicial não entra na média.
-- O **Saldo inicial guardado** é um único número por usuário, editável ali mesmo
-  (*Salvar saldo*): use-o para acertar o que você já tinha guardado antes de usar o
-  painel. Ao salvar, as metas são reavaliadas.
+**Card compacto** (topo): "Total guardado: R$ X" e "Média guardada por mês: R$ Y (base: N meses)",
+com o link **Ver Porquinho**. O total = soma das caixinhas + (receitas − despesas) dos **meses
+fechados** (ver [Porquinho](#porquinho-porquinho)); a composição completa e as caixinhas ficam lá. O
+antigo campo "Saldo inicial guardado" e o botão *Salvar saldo* saíram desta aba.
+- **Média guardada por mês** = **média de (receitas − despesas) por mês fechado** — mesma regra do
+  total: de outubro/2026 ao mês anterior ao atual, o mês atual **não entra** (fuso America/Fortaleza).
+  Calculada **no backend** (`mediaMensal` e `mesesFechados` em `GET /api/guardado`, no `guardado` de
+  `GET /api/metas` e de `GET /api/caixinhas`; `services/guardado.js`). Com só 1 mês fechado a base diz
+  "(base: 1 mês)" — estimativa fraca; sem nenhum mês fechado a linha não aparece. As caixinhas não
+  entram na média.
 
 **Metas**
 - **Adicionar**: título + **Valor (R$) opcional** — botão *Adicionar* ou **Enter**.
@@ -756,8 +801,11 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — só meses fechados; `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total) |
-| PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` · `400` |
+| GET    | `/api/guardado`       | sim  | —                                                 | `200 { totalCaixinhas, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — `total` = soma das caixinhas + só meses fechados; `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total). (O antigo `PUT /api/guardado` do saldo inicial foi removido.) |
+| GET    | `/api/caixinhas`      | sim  | —                                                 | `200 { caixinhas: [{ _id, nome, valor, createdAt, updatedAt }], limite, guardado }` (ordem de criação; na 1ª vez cria a caixinha "Saldo inicial" a partir do saldo antigo; `guardado` = o mesmo objeto de `GET /api/guardado`, ou `null` se falhar) |
+| POST   | `/api/caixinhas`      | sim  | `{ nome, valor }` (nome 2–30; valor número ≥ 0)    | `201 { caixinha }` · `400` (validação / limite de 20) |
+| PATCH  | `/api/caixinhas/:id`  | sim  | `{ nome?, valor? }` (ao menos um)                  | `200 { caixinha }` · `400` · `404` |
+| DELETE | `/api/caixinhas/:id`  | sim  | —                                                 | `204` · `400` (id inválido) · `404` |
 | GET    | `/api/categorias`     | sim  | —                                                 | `200 { categorias: [{ _id, nome, cor, qtdDespesas, ... }], limite }` (cria as 5 padrão no 1º acesso; `qtdDespesas` = despesas de todos os meses com esse nome) |
 | POST   | `/api/categorias`     | sim  | `{ nome, cor }` (nome 2–24; cor `#RRGGBB`)         | `201 { categoria }` · `400` (validação / limite de 15) · `409` (nome repetido) |
 | PATCH  | `/api/categorias/:id` | sim  | `{ nome?, cor? }` (ao menos um)                    | `200 { categoria, despesasAtualizadas }` (renomear leva as despesas junto) · `400` (validação / renomear "Outros") · `404` · `409` |

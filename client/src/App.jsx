@@ -9,6 +9,7 @@
  *   /resumo     -> <Resumo>      (página inicial)
  *   /receitas   -> <Receitas>
  *   /despesas   -> <Despesas>
+ *   /porquinho  -> <Porquinho>   (caixinhas + total guardado)
  *   /metas      -> <Metas>
  *   /perfil     -> <Perfil>      (nome/sobrenome e troca de senha; aberta pelo cartão do usuário)
  *
@@ -23,6 +24,7 @@ import Receitas from './pages/Receitas.jsx';
 import Despesas from './pages/Despesas.jsx';
 import Resumo from './pages/Resumo.jsx';
 import Metas from './pages/Metas.jsx';
+import Porquinho from './pages/Porquinho.jsx';
 import Perfil from './pages/Perfil.jsx';
 
 export default function App() {
@@ -35,6 +37,7 @@ export default function App() {
         <Route path="/receitas" element={<Receitas />} />
         <Route path="/despesas" element={<Despesas />} />
         <Route path="/resumo" element={<Resumo />} />
+        <Route path="/porquinho" element={<Porquinho />} />
         <Route path="/metas" element={<Metas />} />
         <Route path="/perfil" element={<Perfil />} />
       </Route>
