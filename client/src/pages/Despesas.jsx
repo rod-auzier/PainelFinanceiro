@@ -6,7 +6,12 @@
  *    GET /api/despesas?mes=AAAA-MM via useRecurso);
  *  - criar despesa (POST /api/despesas) com Descrição, Categoria, Valor e o
  *    checkbox "Repete todo mês" (`recorrente`). A despesa é lançada no mês
- *    selecionado (`mes` no body). Categoria é um <select> de CATEGORIAS_DESPESA;
+ *    selecionado (`mes` no body). Categoria usa o <SeletorCategoria>: as categorias PERSONALIZADAS
+ *    do usuário (com a bolinha de cor) e "+ Nova categoria", que cria uma sem sair da tela e já a
+ *    deixa selecionada. A mesma escolha aparece na edição inline;
+ *  - CATEGORIAS: seção "Categorias" (<GerenciarCategorias>) abaixo da lista, para criar, editar e
+ *    excluir categorias. Renomear/excluir muda o nome gravado nas despesas, então a lista recarrega;
+ *  - despesa com categoria sem correspondência é EXIBIDA como "Outros" (o dado não muda);
  *  - FIXOS AUTOMÁTICOS: ao abrir um mês, o servidor cria sozinho (e sem duplicar) as
  *    despesas recorrentes ("Repete todo mês") do mês anterior — só até o mês atual; meses
  *    futuros não geram nada. A tela mostra um aviso discreto com quantas foram
@@ -36,19 +41,23 @@ import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
 import { mensagemFixosGerados } from '../lib/mes.js';
-import { CATEGORIAS_DESPESA } from '../lib/constants.js';
+import { NOME_OUTROS } from '../lib/constants.js';
+import { useCategorias } from '../context/CategoriasContext.jsx';
 import Money from '../components/Money.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
 import CategoriaPonto from '../components/CategoriaPonto.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
+import SeletorCategoria from '../components/SeletorCategoria.jsx';
+import GerenciarCategorias from '../components/GerenciarCategorias.jsx';
 
-const FORM_VAZIO = { descricao: '', categoria: 'Outros', valor: '', recorrente: false };
+const FORM_VAZIO = { descricao: '', categoria: NOME_OUTROS, valor: '', recorrente: false };
 const INPUT =
   'min-h-[44px] rounded border border-border bg-surface px-3 py-2 text-base text-fg ' +
   'placeholder:text-muted focus:border-accent focus:outline-none';
 
 export default function Despesas() {
   const [mes, setMes] = useMesSelecionado();
+  const { resolver } = useCategorias(); // nome/cor de exibição da categoria de cada despesa
   const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática)
   const { itens: despesas, setItens: setDespesas, carregando, erro, recarregar } = useRecurso(
     `/despesas?mes=${mes}`,
@@ -161,7 +170,7 @@ export default function Despesas() {
     }
     await api.put(`/despesas/${id}`, {
       descricao,
-      categoria: rascunho.categoria || 'Outros',
+      categoria: rascunho.categoria || NOME_OUTROS,
       valor: valorNum,
       recorrente: Boolean(rascunho.recorrente),
     });
@@ -174,13 +183,16 @@ export default function Despesas() {
       chave: 'categoria',
       label: 'Categoria',
       classe: 'text-muted',
-      editor: 'select',
-      opcoes: CATEGORIAS_DESPESA,
-      // Bolinha com a cor FIXA da categoria (a mesma da rosca do Resumo).
+      // Edição inline com o mesmo seletor do formulário (bolinhas de cor + "+ Nova categoria").
+      editor: 'custom',
+      editorCustom: (valor, onChange) => <SeletorCategoria valor={valor} onChange={onChange} className="bg-bg" />,
+      valorEdicao: (d) => resolver(d.categoria).nome, // categoria sem correspondência começa em "Outros"
+      // Bolinha com a cor da categoria do usuário (a mesma da rosca do Resumo); sem
+      // correspondência, mostra "Outros".
       render: (d) => (
         <span className="inline-flex items-center gap-2">
           <CategoriaPonto categoria={d.categoria} />
-          {d.categoria}
+          {resolver(d.categoria).nome}
         </span>
       ),
     },
@@ -273,17 +285,12 @@ export default function Despesas() {
           className={`${INPUT} sm:col-span-2 xl:col-span-1`}
           required
         />
-        <select
-          value={form.categoria}
-          onChange={(e) => setCampo('categoria', e.target.value)}
-          className={INPUT}
-        >
-          {CATEGORIAS_DESPESA.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        {/* Categorias do usuário com bolinha de cor; a última opção cria uma nova sem sair da tela. */}
+        <SeletorCategoria
+          valor={form.categoria}
+          onChange={(nome) => setCampo('categoria', nome)}
+          className="bg-surface"
+        />
         <input
           type="number"
           step="0.01"
@@ -353,6 +360,10 @@ export default function Despesas() {
         carregando={carregando}
         erro={erro}
       />
+
+      {/* Gerenciar categorias (criar/editar/excluir). Renomear/excluir altera o nome gravado nas
+          despesas, então a lista recarrega em segundo plano. */}
+      <GerenciarCategorias aoAlterar={() => recarregar({ silencioso: true })} />
     </div>
   );
 }

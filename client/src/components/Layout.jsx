@@ -31,6 +31,7 @@ import { NavLink, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { ICONE_NAV } from './IconesNav.jsx';
 import MenuUsuario from './MenuUsuario.jsx';
+import { CategoriasProvider } from '../context/CategoriasContext.jsx';
 import { inicialDoUsuario, nomeExibido } from '../lib/usuario.js';
 
 // Ordem do menu (sidebar e bottom nav): Resumo, Receitas, Despesas, Metas. O Resumo vem
@@ -173,7 +174,10 @@ export default function Layout() {
           deixa o <main> encolher dentro do flex (sem rolagem horizontal). */}
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 md:ml-56 md:px-8 lg:px-10 pb-24 md:pb-8">
         <div className="mx-auto max-w-[1400px]">
-          <Outlet />
+          {/* Categorias personalizadas do usuário, compartilhadas por todas as telas logadas. */}
+          <CategoriasProvider>
+            <Outlet />
+          </CategoriasProvider>
         </div>
       </main>
 

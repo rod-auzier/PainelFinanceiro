@@ -18,8 +18,12 @@
  *      alinhar?: 'right',
  *      render?: (item) => node,     // exibição normal (ex.: <Money>)
  *      classe?: string,             // classes extras na célula (desktop)
- *      editor?: 'text' | 'number' | 'select' | 'checkbox',   // torna o campo editável
+ *      editor?: 'text' | 'number' | 'select' | 'checkbox' | 'custom',   // torna o campo editável
  *      opcoes?: string[],           // opções do <select> (editor 'select')
+ *      editorCustom?: (valor, onChange) => node,  // editor próprio (editor 'custom'; ex.: o
+ *                                   // <SeletorCategoria> das Despesas, com bolinhas de cor)
+ *      valorEdicao?: (item) => any, // valor inicial do campo ao começar a editar (padrão:
+ *                                   // item[chave]; ex.: a categoria de EXIBIÇÃO da despesa)
  *    }>}
  *      A ÚLTIMA coluna é tratada como a coluna de valor no rodapé de total.
  *  - itens          {Array<object>}          dados já carregados.
@@ -70,6 +74,10 @@ function EditorCampo({ col, valor, onChange }) {
         Todo mês
       </label>
     );
+  }
+  if (col.editor === 'custom') {
+    // Editor fornecido pela tela (ex.: seletor de categoria com bolinhas de cor).
+    return col.editorCustom(valor, onChange);
   }
   if (col.editor === 'select') {
     return (
@@ -152,7 +160,7 @@ export default function ListaLancamentos({
     const inicial = {};
     for (const col of colunas) {
       if (!col.editor) continue;
-      const v = item[col.chave];
+      const v = col.valorEdicao ? col.valorEdicao(item) : item[col.chave];
       inicial[col.chave] = col.editor === 'checkbox' ? Boolean(v) : v == null ? '' : String(v);
     }
     setRascunho(inicial);

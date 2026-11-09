@@ -8,8 +8,9 @@
  *
  * O que mostra:
  *  - rosca SVG feita à mão (sem biblioteca de gráficos): uma fatia por categoria, cada uma
- *    com a cor FIXA da categoria (lib/constants.js → COR_CATEGORIA, a mesma em todo o app).
- *    Os azuis da paleta são parecidos, então há um VÃO de 2px entre as fatias, na cor do card.
+ *    com a cor da categoria do USUÁRIO (categorias personalizadas — useCategorias; a mesma em
+ *    todo o app). Despesa com categoria sem correspondência entra em "Outros" (só na exibição).
+ *    Há um VÃO de 2px entre as fatias, na cor do card, para separar tons parecidos.
  *    O buraco é grande para o texto central caber com folga: nele aparece o total de despesas
  *    (sem centavos) ou, com uma categoria em foco, NOME, VALOR e %;
  *  - ao lado, a legenda (da maior para a menor): bolinha da cor, NOME INTEIRO (quebra de linha
@@ -24,10 +25,12 @@
  *
  * Layout: rosca e lista ficam lado a lado e, se o card for estreito, a lista desce
  * automaticamente (flex-wrap) — sem rolagem horizontal.
+ * MUITAS CATEGORIAS (mais de 6): a legenda passa a DUAS COLUNAS (quando há largura, `sm`) e ganha
+ * altura máxima com rolagem vertical própria — os nomes nunca são cortados (quebram de linha).
  */
 import { useMemo, useState } from 'react';
 import { useEntrada } from '../hooks/useEntrada.js';
-import { corDaCategoria } from '../lib/constants.js';
+import { useCategorias } from '../context/CategoriasContext.jsx';
 import { agruparPorCategoria } from '../lib/resumo.js';
 import CategoriaPonto from './CategoriaPonto.jsx';
 import Money from './Money.jsx';
@@ -52,7 +55,9 @@ function Cartao({ children }) {
 }
 
 export default function CategoriasDonut({ despesas }) {
-  const grupos = useMemo(() => agruparPorCategoria(despesas), [despesas]);
+  const { resolver } = useCategorias();
+  const grupos = useMemo(() => agruparPorCategoria(despesas, resolver), [despesas, resolver]);
+  const muitas = grupos.length > 6; // legenda em 2 colunas + rolagem
   const total = grupos.reduce((soma, g) => soma + g.total, 0);
   const [ativa, setAtiva] = useState(null); // categoria em destaque (hover/toque/foco)
   const pronto = useEntrada(despesas); // preenche as fatias depois do 1º frame
@@ -70,7 +75,7 @@ export default function CategoriasDonut({ despesas }) {
     return (
       <Cartao>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded bg-bg p-3 text-sm">
-          <CategoriaPonto categoria={unica.categoria} />
+          <CategoriaPonto cor={unica.cor} />
           <span className="min-w-0 flex-1">
             Todas as despesas do mês estão em <span className="font-medium">{unica.categoria}</span>.
           </span>
@@ -119,7 +124,7 @@ export default function CategoriasDonut({ despesas }) {
                   cy="60"
                   r={RAIO}
                   fill="none"
-                  stroke={corDaCategoria(f.categoria)}
+                  stroke={f.cor}
                   strokeWidth={ativa === f.categoria ? ESPESSURA + 3 : ESPESSURA}
                   // Começa "vazia" (0) e enche até o comprimento da fatia menos a folga.
                   strokeDasharray={pronto ? `${Math.max(f.comprimento - FOLGA, 0.5)} ${CIRC}` : `0 ${CIRC}`}
@@ -151,7 +156,16 @@ export default function CategoriasDonut({ despesas }) {
         </div>
 
         {/* ---------- Legenda (da maior para a menor) ---------- */}
-        <ul className="min-w-[210px] flex-1 space-y-0.5">
+        {/* Com muitas categorias: 2 colunas (a partir de `sm`) e altura máxima com rolagem própria
+            (`overscroll-contain` evita rolar a página junto no celular). */}
+        <ul
+          className={[
+            'min-w-[210px] flex-1',
+            muitas
+              ? 'grid max-h-[320px] gap-x-2 gap-y-0.5 overflow-y-auto overscroll-contain pr-1 sm:grid-cols-2'
+              : 'space-y-0.5',
+          ].join(' ')}
+        >
           {grupos.map((g) => {
             const esmaecido = ativa && ativa !== g.categoria;
             return (
@@ -168,7 +182,7 @@ export default function CategoriasDonut({ despesas }) {
                 onFocus={() => setAtiva(g.categoria)} // teclado (Tab) também destaca
                 onBlur={() => setAtiva(null)}
               >
-                <CategoriaPonto categoria={g.categoria} />
+                <CategoriaPonto cor={g.cor} />
                 {/* Nome em cima (inteiro; quebra de linha se faltar espaço) e valor embaixo: a
                     coluna do nome ocupa todo o espaço livre e nunca é cortada com "…". */}
                 <div className="min-w-0 flex-1">

@@ -6,16 +6,18 @@
  *             despesas do mês (as que a API já devolve). A ordenação/corte em 5 é feita por
  *             `maioresDespesas` (lib/resumo.js).
  *
- * Cada linha mostra a posição (1–5), a descrição, a categoria (bolinha com a cor fixa da
- * categoria + nome) e o valor em fonte mono tabular, em vermelho. Sem despesas, mostra um
+ * Cada linha mostra a posição (1–5), a descrição, a categoria (bolinha com a cor da categoria do
+ * usuário + nome; sem correspondência aparece como "Outros") e o valor em fonte mono tabular, em vermelho. Sem despesas, mostra um
  * aviso simples. Descrições longas são truncadas (sem rolagem horizontal no celular).
  */
 import { maioresDespesas } from '../lib/resumo.js';
+import { useCategorias } from '../context/CategoriasContext.jsx';
 import CategoriaPonto from './CategoriaPonto.jsx';
 import Money from './Money.jsx';
 
 export default function MaioresDespesas({ despesas }) {
   const top = maioresDespesas(despesas, 5);
+  const { resolver } = useCategorias(); // nome/cor de exibição da categoria
 
   return (
     <section className="rounded border border-border bg-surface p-4 sm:p-5" aria-label="Maiores despesas do mês">
@@ -33,7 +35,7 @@ export default function MaioresDespesas({ despesas }) {
                 <p className="truncate text-sm">{d.descricao}</p>
                 <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                   <CategoriaPonto categoria={d.categoria} />
-                  <span className="truncate">{d.categoria}</span>
+                  <span className="truncate">{resolver(d.categoria).nome}</span>
                 </p>
               </div>
               <Money value={d.valor} tone="negative" className="shrink-0 text-sm" />

@@ -27,7 +27,7 @@ despesas, categorização e visualização de saldo, com autenticação por usu�
 
 - **Backend (`server/`)** — API REST em Node.js + Express (ESM). Camadas:
   - `config/` — carregamento de env e conexão (cacheada) com o banco;
-  - `models/` — schemas Mongoose (`User`, `Receita`, `Despesa`);
+  - `models/` — schemas Mongoose (`User`, `Receita`, `Despesa`, `Meta`, `Categoria`, `FixosGerados`);
   - `middlewares/` — autenticação JWT e tratamento de erros;
   - `controllers/` — regras de cada endpoint;
   - `routes/` — definição das rotas sob o prefixo `/api`.
@@ -79,7 +79,7 @@ Finanças/
 │       ├── lib/
 │       │   ├── format.js       # brl()
 │       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
-│       │   ├── constants.js    # CATEGORIAS_DESPESA + mapa único de cores das categorias
+│       │   ├── constants.js    # categorias: padrão (provisórias), PALETA_CORES, "Outros", validação do nome
 │       │   ├── previsao.js     # previsão das metas ("No ritmo atual, chega em mar/2027") — funções puras
 │       ├── hooks/
 │       │   ├── useRecurso.js   # hook genérico de carregamento de lista da API
@@ -87,7 +87,8 @@ Finanças/
 │       ├── services/
 │       │   └── api.js          # Instância axios + interceptor do token JWT
 │       ├── context/
-│       │   └── AuthContext.jsx # Estado de auth (login/register/logout, localStorage)
+│       │   ├── AuthContext.jsx # Estado de auth (login/register/logout, localStorage)
+│       │   └── CategoriasContext.jsx # categorias PERSONALIZADAS do usuário (lista, nome→cor, criar/editar/excluir)
 │       ├── components/
 │       │   ├── AuthForm.jsx                 # form e-mail+senha (Login e Registro; Registro com Nome/Sobrenome)
 │       │   ├── CampoSenha.jsx               # campo de senha com Mostrar/Ocultar
@@ -103,13 +104,16 @@ Finanças/
 │       │   ├── ResumoTotalCard.jsx          # Resumo: card de receitas/despesas com ícone e comparação
 │       │   ├── CategoriasDonut.jsx          # Resumo: rosca (SVG) + lista por categoria, com destaque cruzado
 │       │   ├── MaioresDespesas.jsx          # Resumo: as 5 maiores despesas do mês
-│       │   └── CategoriaPonto.jsx           # bolinha com a cor fixa da categoria
+│       │   ├── CategoriaPonto.jsx           # bolinha com a cor da categoria do usuário
+│       │   ├── SeletorCategoria.jsx         # campo Categoria com bolinhas + "+ Nova categoria" (mini-formulário)
+│       │   ├── FormCategoria.jsx            # mini-formulário de categoria: nome + grade de cores
+│       │   └── GerenciarCategorias.jsx      # seção "Categorias" da tela de Despesas (criar/editar/excluir)
 │       └── pages/
 │           ├── Login.jsx       # Tela de login
 │           ├── Registro.jsx    # Tela de cadastro (com Nome e Sobrenome)
 │           ├── Perfil.jsx      # Perfil: nome/sobrenome + alterar senha
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
-│           ├── Despesas.jsx    # Formulário + tabela + total de despesas
+│           ├── Despesas.jsx    # Formulário + tabela + total de despesas + seção Categorias
 │           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
 │           └── Metas.jsx       # Total guardado + metas com valor/progresso (atualização otimista)
 │
@@ -127,7 +131,9 @@ Finanças/
         │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), saldoInicial }
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
         │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, createdAt }
-        │   └── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
+        │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
+        │   ├── Categoria.js    # { userId, nome (2–24, único por usuário sem diferenciar maiúsculas), cor, createdAt }
+        │   └── FixosGerados.js # marcador (usuário, tipo, mês) da geração automática de fixos
         ├── middlewares/
         │   ├── auth.js         # Valida JWT → injeta req.userId
         │   └── errorHandler.js # 404 + handler de erros padronizado
@@ -137,14 +143,16 @@ Finanças/
         ├── services/
         │   ├── fixos.js        # geração AUTOMÁTICA dos fixos do mês (idempotente, com marcador único)
         │   ├── totais.js       # somarValor / somarMesesFechados: somas de receitas/despesas (aggregation)
-        │   └── guardado.js     # total guardado (só meses fechados) + parcial do mês + conclusão automática das metas
+        │   ├── guardado.js     # total guardado (só meses fechados) + parcial do mês + conclusão automática das metas
+        │   └── categorias.js   # categorias padrão no 1º acesso, "Outros" protegida, contagem de despesas por categoria
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
         │   ├── despesa.controller.js  # listar, criar, atualizar, remover (por userId)
         │   ├── resumo.controller.js   # agrega totais (aggregation MongoDB)
         │   ├── meta.controller.js     # listar, criar, atualizar (PATCH), remover (por userId)
-│   └── guardado.controller.js # total guardado e saldo inicial
+        │   ├── guardado.controller.js # total guardado e saldo inicial
+        │   └── categoria.controller.js # listar, criar, renomear/recolorir, excluir (por userId)
         └── routes/
             ├── index.js           # Agrupa as rotas sob /api (+ /health)
             ├── auth.routes.js     # /api/register, /api/login, /api/me e /api/auth/{me,perfil,senha}
@@ -152,7 +160,8 @@ Finanças/
             ├── despesa.routes.js  # /api/despesas  (protegida)
             ├── resumo.routes.js   # /api/resumo    (protegida)
             ├── meta.routes.js     # /api/metas     (protegida)
-└── guardado.routes.js # /api/guardado  (protegida)
+            ├── guardado.routes.js # /api/guardado  (protegida)
+            └── categoria.routes.js # /api/categorias (protegida)
 ```
 
 ---
@@ -257,8 +266,9 @@ só as **mapeia** para classes utilitárias — nenhum componente tem cor hardco
   (`z-index: 1`) — sem rolagem horizontal e sem custo ao rolar. No **celular** fica mais discreta
   (**40px**, **6%**). Ajuste em `client/src/index.css`: variáveis `--grade-tamanho` e
   `--grade-opacidade` (no `:root`, e no `@media (max-width: 767px)` para o celular).
-- **Cores de dados**: as cores das categorias (rosca do Resumo, bolinhas) são fixas em
-  [`lib/constants.js`](client/src/lib/constants.js) e não fazem parte do tema.
+- **Cores de dados**: as cores das categorias (rosca do Resumo, bolinhas) são escolhidas pelo usuário
+  (gravadas na `Categoria`) a partir da `PALETA_CORES` de [`lib/constants.js`](client/src/lib/constants.js);
+  não fazem parte do tema.
 - **Contraste (WCAG)**: texto secundário `#7A8590` tem 4,9:1 sobre `surface` e 5,2:1 sobre
   `bg` (mínimo AA = 4,5:1); texto principal 15,3:1; verde 9,3:1, vermelho 5,3:1 e amarelo
   8,0:1 sobre `surface`. As divisórias e a diferença card/fundo são propositalmente sutis
@@ -346,8 +356,8 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   valor de uma fixa gerada; dá para (des)marcar "Todo mês". **✕** exclui.
 
 ### Despesas (`/despesas`)
-- **Formulário**: `Descrição` (obrigatório), `Categoria` (select fixo:
-  Utilidades, Alimentação, Saúde, Lazer, Outros) e `Valor`
+- **Formulário**: `Descrição` (obrigatório), `Categoria` (as **categorias do usuário**, com a
+  bolinha de cor — ver [Categorias personalizadas](#categorias-personalizadas)) e `Valor`
   (obrigatório, ≥ 0).
 - **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: lista e total do mês escolhido;
   novas despesas são lançadas nesse mês. A seta "anterior" fica **desabilitada em
@@ -359,8 +369,8 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   o que mudou (ex.: a conta de luz), e a tela avisa quantas foram adicionadas.
 - **Lista**: descrição, categoria, fixo e valor; tabela no desktop, cards no
   mobile; total do mês ao fim.
-- **Editar inline** (lápis): campos viram inputs (`Categoria` continua um
-  select), *Salvar* / *Cancelar* (PUT `/api/despesas/:id`). **✕** exclui.
+- **Editar inline** (lápis): campos viram inputs (`Categoria` usa o mesmo seletor com bolinhas),
+  *Salvar* / *Cancelar* (PUT `/api/despesas/:id`). **✕** exclui.
 - **Marcar como paga**: cada despesa tem uma **caixa de marcação grande** (44×44px de toque, mesmo
   estilo das Metas: verde `#3ECF8E` quando marcada). Marcada = texto levemente apagado (o valor
   continua visível). **Atualização otimista**: marca na hora e sincroniza com
@@ -372,6 +382,42 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   na própria tela; age só nas pendentes do mês selecionado — `PATCH /api/despesas/pagas`).
 - No **Resumo**, o card *Total de despesas* mostra **Pago** e **Falta pagar** (esta em amarelo
   `#D4A24C`) com uma barrinha fina do que já foi pago. Vale para qualquer mês navegável.
+
+### Categorias personalizadas
+
+As categorias de despesa são **de cada usuário**: dá para criar, editar (nome e cor) e excluir.
+
+- **Onde**: no formulário de Despesas o campo *Categoria* lista as suas categorias com a bolinha de
+  cor e, por último, **+ Nova categoria** — abre um mini-formulário (nome + cor) sem sair da tela, e a
+  categoria criada já fica selecionada. Para gerenciar tudo, use a seção **Categorias** no fim da tela
+  de Despesas (*Gerenciar*): lista com bolinha, nome, quantas despesas usam cada uma, e os botões
+  **editar** e **excluir**.
+- **Regras** (validadas no servidor): nome de **2 a 24 caracteres**, **único por usuário sem
+  diferenciar maiúsculas** ("Lazer" = "lazer"), cor no formato `#RRGGBB`, **no máximo 15 categorias**.
+- **Seletor de cor**: grade com 10 cores boas no fundo escuro e distinguíveis entre si, sem verde e
+  vermelho puros (que indicam receita/despesa): `#3F78B0`, `#4FB3BF`, `#9B8AD9`, `#C9B27C`,
+  `#B98AB5`, `#7FB5A0`, `#D2A66E`, `#8E9AAF`, `#5E6AB5`, `#6B7682` (`PALETA_CORES` em
+  `client/src/lib/constants.js`). Uma categoria nova já vem com a **primeira cor ainda não usada**.
+  Ao editar uma categoria cuja cor não é da grade (ex.: as padrão), a cor atual aparece como primeira
+  opção, para poder ser mantida.
+- **Renomear** uma categoria renomeia também as despesas do usuário que usam o nome antigo (elas não
+  ficam órfãs); a tela avisa quantas foram atualizadas.
+- **Excluir**: pede confirmação dizendo **quantas despesas serão movidas para "Outros"**. As despesas
+  **nunca são apagadas** — só passam para "Outros" — e a tela avisa quantas foram movidas.
+- **"Outros" é fixa**: não pode ser excluída nem renomeada (a API recusa com `400`) e aparece sem os
+  botões de editar/excluir.
+- **Transição sem migração (preguiçosa)**: na primeira vez que o usuário abre as categorias
+  (`GET /api/categorias`, chamado ao entrar no app), o servidor cria as 5 padrão com as cores de
+  antes — Utilidades `#3F78B0`, Saúde `#356A9C`, Alimentação `#2B5A86`, Outros `#234A70`, Lazer
+  `#6B7682`. Duas aberturas ao mesmo tempo não duplicam (índice único usuário + nome normalizado).
+- **Ligação com as despesas**: a despesa continua guardando o **nome** da categoria como texto
+  (nenhum dado antigo foi alterado). Ela casa com a categoria do usuário de mesmo nome, sem
+  diferenciar maiúsculas. Se não houver correspondência, a despesa é **exibida como "Outros"**
+  (lista, formulário, rosca e maiores despesas), mas o valor gravado não muda.
+- **Cores em todo o app** vêm das categorias do usuário (`CategoriasContext`, carregado uma vez ao
+  entrar): rosca e legenda do Resumo, maiores despesas, lista e formulário de Despesas.
+- **Isolamento**: todas as rotas usam o `userId` do token; renomear/excluir só mexe nas despesas do
+  próprio usuário.
 
 ### Resumo (`/resumo`)
 Tela só **visual**: tudo é calculado com os dados que já existem (nada novo para preencher, nenhuma
@@ -399,12 +445,13 @@ rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular,
   destaca o outro (o resto esmaece; no toque, tocar de novo desfaz). Com uma única categoria ou
   nenhuma despesa, mostra um estado simples.
 - **Maiores despesas do mês**: as 5 maiores (descrição, categoria, valor), da maior para a menor.
-- **Cada categoria tem sempre a mesma cor em todo o app** — paleta "azuis escuros", num único mapa
-  (`COR_CATEGORIA` em `client/src/lib/constants.js`): Utilidades `#3F78B0`, Saúde `#356A9C`,
-  Alimentação `#2B5A86`, Outros `#234A70`, Lazer `#6B7682`; categoria
-  desconhecida usa `#6B7682`. Sem verde/vermelho (significado fixo no tema). Como os azuis são
-  parecidos, a rosca tem vão de 2px entre as fatias e, ao passar o mouse/tocar, destaca a fatia
-  e mostra nome, valor e % no centro. A mesma bolinha aparece na lista de Despesas.
+- **Cada categoria tem sempre a mesma cor em todo o app** — a cor que o **usuário escolheu** para
+  ela (ver [Categorias personalizadas](#categorias-personalizadas)); despesa com categoria sem
+  correspondência aparece como "Outros". A rosca tem vão de 2px entre as fatias e, ao passar o
+  mouse/tocar, destaca a fatia e mostra nome, valor e % no centro. A mesma bolinha aparece na lista
+  e no formulário de Despesas.
+- **Muitas categorias**: com mais de 6 na rosca, a legenda vira **duas colunas** (quando há largura)
+  e ganha **rolagem própria** (altura máxima) — os nomes quebram de linha, nunca são cortados.
 - **Layout**: no desktop, o card principal (2/3) fica no topo com receitas/despesas ao lado (1/3), e
   abaixo, em duas colunas, a rosca com a lista e as maiores despesas; no celular, **uma coluna**,
   sem rolagem horizontal.
@@ -711,12 +758,15 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 | GET    | `/api/guardado`       | sim  | —                                                 | `200 { saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — só meses fechados; `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total) |
 | PUT    | `/api/guardado`       | sim  | `{ saldoInicial }` (número ≥ 0)                    | `200 { saldoInicial, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` · `400` |
+| GET    | `/api/categorias`     | sim  | —                                                 | `200 { categorias: [{ _id, nome, cor, qtdDespesas, ... }], limite }` (cria as 5 padrão no 1º acesso; `qtdDespesas` = despesas de todos os meses com esse nome) |
+| POST   | `/api/categorias`     | sim  | `{ nome, cor }` (nome 2–24; cor `#RRGGBB`)         | `201 { categoria }` · `400` (validação / limite de 15) · `409` (nome repetido) |
+| PATCH  | `/api/categorias/:id` | sim  | `{ nome?, cor? }` (ao menos um)                    | `200 { categoria, despesasAtualizadas }` (renomear leva as despesas junto) · `400` (validação / renomear "Outros") · `404` · `409` |
+| DELETE | `/api/categorias/:id` | sim  | —                                                 | `200 { movidas }` (despesas passam para "Outros") · `400` (excluir "Outros") · `404` |
 
 ---
 
 ## Próximos passos sugeridos
 
-- Edição (`PUT`) de receitas e despesas.
 - Filtros por período/categoria e paginação nas listagens.
 - Validação de payload com `zod` ou `express-validator`.
 - Testes automatizados (`vitest` no client, `supertest` no server).

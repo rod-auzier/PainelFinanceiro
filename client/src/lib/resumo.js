@@ -3,30 +3,31 @@
  * (totais do mês e lista de despesas); nada aqui altera regras de cálculo do backend.
  * Funções sem efeito colateral, fáceis de testar.
  */
-import { CATEGORIAS_DESPESA, normalizarCategoria } from './constants.js';
 
 /**
  * Agrupa as despesas por categoria, da MAIOR para a MENOR.
- * Categoria fora da lista cai em "Outros". Categorias sem gasto não aparecem.
+ * Usa as categorias do USUÁRIO: `resolver(nome)` (de useCategorias) devolve a categoria de exibição
+ * — casa pelo nome sem diferenciar maiúsculas e, sem correspondência, cai em "Outros" (só na
+ * exibição; o dado gravado não muda). Categorias sem gasto não aparecem.
  *
  * @param   {Array<{ categoria: string, valor: number }>} despesas
- * @returns {Array<{ categoria: string, total: number, percentual: number }>}
+ * @param   {(nome: string) => { nome: string, cor: string }} resolver
+ * @returns {Array<{ categoria: string, cor: string, total: number, percentual: number }>}
  *          `percentual` = fatia (0–100) do TOTAL de despesas.
  */
-export function agruparPorCategoria(despesas) {
-  const soma = {};
+export function agruparPorCategoria(despesas, resolver) {
+  const grupos = new Map(); // nome de exibição → { categoria, cor, total }
   for (const d of despesas) {
-    const cat = normalizarCategoria(d.categoria);
-    soma[cat] = (soma[cat] || 0) + Number(d.valor || 0);
+    const { nome, cor } = resolver(d.categoria);
+    const g = grupos.get(nome) ?? { categoria: nome, cor, total: 0 };
+    g.total += Number(d.valor || 0);
+    grupos.set(nome, g);
   }
-  const totalGeral = Object.values(soma).reduce((a, b) => a + b, 0);
+  const totalGeral = [...grupos.values()].reduce((a, g) => a + g.total, 0);
 
-  return CATEGORIAS_DESPESA.filter((c) => soma[c] > 0)
-    .map((categoria) => ({
-      categoria,
-      total: soma[categoria],
-      percentual: totalGeral > 0 ? (soma[categoria] / totalGeral) * 100 : 0,
-    }))
+  return [...grupos.values()]
+    .filter((g) => g.total > 0)
+    .map((g) => ({ ...g, percentual: totalGeral > 0 ? (g.total / totalGeral) * 100 : 0 }))
     .sort((a, b) => b.total - a.total);
 }
 
