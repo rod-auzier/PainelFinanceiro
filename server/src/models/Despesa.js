@@ -20,6 +20,10 @@
  *                  do mês (ver services/cartao.js): se o usuário informar o total da fatura, só a diferença
  *                  ainda não lançada é somada ao total — nada conta duas vezes. Os fixos copiados para o
  *                  mês seguinte mantêm o `cartao` da original.
+ *  - cartaoId   : cartão de crédito em que a despesa foi paga (Cartao). Vazio/`null` = NÃO é cartão.
+ *                  Despesas ANTIGAS com `cartao: true` e sem `cartaoId` pertencem ao cartão padrão
+ *                  (transição sem migração). Ao gravar pelo app novo, `cartao` acompanha (`cartaoId`
+ *                  preenchido ⇔ `cartao: true`). Os fixos copiados mantêm o `cartaoId`.
  *  - createdAt  : data de registro da despesa. Gerada automaticamente pelo
  *                 `timestamps` do Mongoose (que também cria `updatedAt`).
  */
@@ -60,6 +64,12 @@ const despesaSchema = new mongoose.Schema(
     cartao: {
       type: Boolean,
       default: false,
+    },
+    // Cartão de crédito (vários cartões). Ver o comentário do topo e services/cartao.js.
+    cartaoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Cartao',
+      default: null,
     },
   },
   { timestamps: true },

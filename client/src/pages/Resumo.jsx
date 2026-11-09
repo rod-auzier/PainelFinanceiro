@@ -81,9 +81,9 @@ export default function Resumo() {
         }
         if (!ativo) return;
         setResumo(r1.data);
-        // A linha virtual "Outras compras no cartão" (parte da fatura não detalhada, categoria
-        // "Outros") entra na rosca e nas maiores despesas, como no total do Resumo.
-        setDespesas([...(r2.data.despesas ?? []), ...(r2.data.linhaVirtual ? [r2.data.linhaVirtual] : [])]);
+        // As linhas virtuais "Outras compras no cartão (nome)" (parte não detalhada de cada fatura,
+        // categoria "Outros") entram na rosca e nas maiores despesas, como no total do Resumo.
+        setDespesas([...(r2.data.despesas ?? []), ...(r2.data.linhasVirtuais ?? [])]);
         setAnterior(r3 ? r3.data : null);
       } catch (err) {
         if (ativo) setErro(err.response?.data?.message || 'Falha ao carregar o resumo.');
@@ -158,12 +158,12 @@ export default function Resumo() {
             nomeAnterior={nomeAnterior}
             // Pago / falta pagar (informativo; o total acima continua somando TODAS as despesas).
             pagamento={{ pago: resumo.totalPago ?? 0, faltaPagar: resumo.faltaPagar ?? resumo.totalDespesas }}
-            // Total já CORRIGIDO pelo cartão: avisa quanto dele veio da parte não detalhada da fatura.
+            // Total já CORRIGIDO pelos cartões: avisa quanto dele veio das partes não detalhadas das faturas.
             nota={
               resumo.outrasComprasCartao > 0
-                ? `inclui ${brl(resumo.outrasComprasCartao)} de outras compras no cartão`
+                ? `inclui ${brl(resumo.outrasComprasCartao)} de outras compras nos cartões`
                 : resumo.cartaoExcedeu
-                  ? 'despesas de cartão passam do total da fatura informado'
+                  ? 'despesas de cartão passam do total de uma fatura informada'
                   : undefined
             }
           />

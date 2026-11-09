@@ -1,31 +1,29 @@
 /**
- * CartaoCard — card "Cartão de crédito" no topo da tela de Despesas.
+ * CartaoCard — card de UM cartão de crédito na seção "Cartões de crédito" da tela de Despesas.
  *
- * Ideia: o usuário lança uma a uma as despesas pagas no cartão que quiser detalhar (marcando
- * "Pago no cartão de crédito") e informa aqui só o TOTAL DA FATURA do mês. O servidor calcula a
- * parte da fatura que não foi detalhada ("Outras compras no cartão") e a soma ao total de despesas
- * — nada conta duas vezes (regra em server/src/services/cartao.js).
+ * Ideia: o usuário lança as despesas daquele cartão que quiser detalhar (campo "Cartão") e informa
+ * aqui só o TOTAL DA FATURA do mês. O servidor calcula a parte da fatura que não foi detalhada
+ * ("Outras compras no cartão") e a soma ao total de despesas — nada conta duas vezes (regra em
+ * server/src/services/cartao.js).
  *
- * Mostra:
- *  - "Detalhado nas despesas: R$ X" (soma das despesas marcadas como cartão no mês);
- *  - campo "Fatura total do mês (R$)" + Salvar (PUT /api/faturas/:mes) e "Remover" (DELETE);
- *  - "Outras compras no cartão (não detalhadas): R$ Y" em destaque, dizendo que entrou no total;
- *  - aviso discreto quando o detalhado passa da fatura (vale o detalhado);
- *  - caixa "Fatura paga" (PATCH /api/faturas/:mes/paga) — marca/desmarca também as despesas de cartão;
- *  - estado vazio: "Informe o total da fatura para contar também as compras que você não lançou".
+ * Mostra: bolinha de cor + nome, botões editar/excluir do CARTÃO, "Detalhado nas despesas: R$ X",
+ * campo "Fatura total do mês (R$)" + Salvar (PUT /api/faturas/:mes/:cartaoId) e Remover (DELETE),
+ * "Outras compras no cartão: R$ Y" em destaque, aviso se o detalhado passa da fatura e a caixa
+ * "Fatura paga" (PATCH …/paga — marca/desmarca também as despesas DESTE cartão no mês).
  *
  * Props:
- *  - mes       {string}  "AAAA-MM" selecionado na tela.
- *  - cartao    {object|null}  situação do cartão no mês (GET /api/despesas?mes → `cartao`):
- *              `{ fatura: { valor, paga } | null, detalhado, naoDetalhado, excedeu }`.
- *  - aoAlterar {() => Promise<void>}  chamado depois de salvar/remover/marcar, para a tela recarregar
- *              as despesas (a linha virtual, o total e o status "paga" das despesas mudam).
+ *  - mes       {string}  "AAAA-MM".
+ *  - situacao  {{ cartao: { _id, nome, cor }, fatura: { valor, paga } | null, detalhado, naoDetalhado,
+ *                excedeu }}  um item de `cartoes` de GET /api/despesas?mes.
+ *  - aoAlterar {() => Promise<void>}  depois de salvar/remover/marcar: a tela recarrega as despesas.
+ *  - onEditar  {() => void} / onExcluir {() => void}  ações sobre o cartão (a seção cuida delas).
  *
- * Tema Grafite: card sólido; no celular tudo em uma coluna; botões e caixa com ≥ 44px.
+ * Tema Grafite: card sólido; botões e caixa com ≥ 44px.
  */
 import { useEffect, useState } from 'react';
 import { api } from '../services/api.js';
 import CaixaCheck from './CaixaCheck.jsx';
+import CategoriaPonto from './CategoriaPonto.jsx';
 import Money from './Money.jsx';
 
 const INPUT =
@@ -43,13 +41,28 @@ export function IconeCartao({ size = 16 }) {
   );
 }
 
-export default function CartaoCard({ mes, cartao, aoAlterar }) {
-  const fatura = cartao?.fatura ?? null;
+/** Ícones pequenos de editar/excluir. */
+const IconeLapis = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
+const IconeLixeira = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M19 6l-1 14H6L5 6" />
+  </svg>
+);
+
+export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExcluir }) {
+  const { cartao, fatura } = situacao;
   const [campo, setCampo] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
 
-  // O campo mostra o valor salvo da fatura (e é reiniciado ao trocar de mês ou após salvar).
+  // O campo mostra o valor salvo da fatura (reiniciado ao trocar de mês ou depois de salvar).
   useEffect(() => {
     setCampo(fatura ? String(fatura.valor) : '');
     setErro('');
@@ -76,23 +89,36 @@ export default function CartaoCard({ mes, cartao, aoAlterar }) {
       setErro('Informe o total da fatura (um valor maior ou igual a zero).');
       return;
     }
-    executar(() => api.put(`/faturas/${mes}`, { valor }), 'Não foi possível salvar a fatura.');
+    executar(() => api.put(`/faturas/${mes}/${cartao._id}`, { valor }), 'Não foi possível salvar a fatura.');
   }
 
-  const detalhado = cartao?.detalhado ?? 0;
-
   return (
-    <section className="space-y-3 rounded border border-border bg-surface p-4" aria-label="Cartão de crédito">
+    <section className="space-y-3 rounded border border-border bg-surface p-4" aria-label={`Cartão ${cartao.nome}`}>
+      {/* Cabeçalho: cor + nome + editar/excluir o cartão. */}
       <div className="flex items-center gap-2">
-        <span className="text-accent">
-          <IconeCartao size={18} />
-        </span>
-        <h2 className="text-sm font-medium">Cartão de crédito</h2>
+        <CategoriaPonto cor={cartao.cor} grande />
+        <h3 className="min-w-0 flex-1 break-words text-sm font-medium">{cartao.nome}</h3>
+        <button
+          type="button"
+          onClick={onEditar}
+          aria-label={`Editar cartão ${cartao.nome}`}
+          className="flex h-11 w-11 items-center justify-center rounded text-muted hover:text-accent"
+        >
+          <IconeLapis />
+        </button>
+        <button
+          type="button"
+          onClick={onExcluir}
+          aria-label={`Excluir cartão ${cartao.nome}`}
+          className="flex h-11 w-11 items-center justify-center rounded text-muted hover:text-negative"
+        >
+          <IconeLixeira />
+        </button>
       </div>
 
       <p className="flex items-baseline justify-between gap-3 text-sm text-muted">
         <span>Detalhado nas despesas</span>
-        <Money value={detalhado} className="text-fg" />
+        <Money value={situacao.detalhado} className="text-fg" />
       </p>
 
       {/* Total da fatura: <form> para o Enter também salvar. */}
@@ -121,7 +147,7 @@ export default function CartaoCard({ mes, cartao, aoAlterar }) {
             <button
               type="button"
               disabled={ocupado}
-              onClick={() => executar(() => api.delete(`/faturas/${mes}`), 'Não foi possível remover a fatura.')}
+              onClick={() => executar(() => api.delete(`/faturas/${mes}/${cartao._id}`), 'Não foi possível remover a fatura.')}
               className="min-h-[44px] rounded border border-border px-4 text-sm text-muted hover:text-fg disabled:opacity-60"
             >
               Remover
@@ -135,39 +161,38 @@ export default function CartaoCard({ mes, cartao, aoAlterar }) {
           {/* Destaque: a parte da fatura que não foi lançada e que ENTROU no total de despesas. */}
           <div className="rounded border border-border bg-bg p-3">
             <p className="flex items-baseline justify-between gap-3 text-sm">
-              <span>Outras compras no cartão (não detalhadas)</span>
-              <Money value={cartao.naoDetalhado} className="font-semibold text-accent" />
+              <span>Outras compras no cartão</span>
+              <Money value={situacao.naoDetalhado} className="font-semibold text-accent" />
             </p>
             <p className="mt-1 text-xs text-muted">
-              {cartao.naoDetalhado > 0
-                ? 'Somado ao total de despesas do mês como a linha "Outras compras no cartão".'
+              {situacao.naoDetalhado > 0
+                ? 'Somado ao total de despesas do mês como uma linha calculada.'
                 : 'Tudo o que está na fatura já foi lançado nas despesas — nada a somar.'}
             </p>
           </div>
 
-          {/* Aviso discreto: despesas de cartão passam do total da fatura (vale o detalhado). */}
-          {cartao.excedeu && (
+          {/* Aviso discreto: as despesas deste cartão passam do total da fatura (vale o detalhado). */}
+          {situacao.excedeu && (
             <p role="status" className="text-xs text-accent">
-              Suas despesas de cartão passam do total da fatura informado — o total usa as despesas lançadas.
+              Suas despesas deste cartão passam do total da fatura informado — o total usa as despesas lançadas.
             </p>
           )}
 
-          {/* Fatura paga: marca também as despesas de cartão do mês (desmarcar desfaz só o que ela marcou). */}
+          {/* Fatura paga: marca também as despesas deste cartão no mês (desmarcar desfaz só o que ela marcou). */}
           <div className="flex items-center gap-1">
             <CaixaCheck
               marcada={Boolean(fatura.paga)}
               onChange={(paga) =>
-                !ocupado && executar(() => api.patch(`/faturas/${mes}/paga`, { paga }), 'Não foi possível atualizar a fatura.')
+                !ocupado &&
+                executar(() => api.patch(`/faturas/${mes}/${cartao._id}/paga`, { paga }), 'Não foi possível atualizar a fatura.')
               }
-              rotulo={fatura.paga ? 'Desmarcar fatura como paga' : 'Marcar fatura como paga'}
+              rotulo={fatura.paga ? `Desmarcar fatura do ${cartao.nome} como paga` : `Marcar fatura do ${cartao.nome} como paga`}
             />
             <span className="text-sm">Fatura paga</span>
           </div>
         </>
       ) : (
-        <p className="text-sm text-muted">
-          Informe o total da fatura para contar também as compras que você não lançou.
-        </p>
+        <p className="text-sm text-muted">Informe o total da fatura para contar também as compras que você não lançou.</p>
       )}
 
       {erro && (

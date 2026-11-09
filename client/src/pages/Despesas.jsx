@@ -27,11 +27,12 @@
  *    automaticamente entram sempre como não pagos; editar não muda o status;
  *  - no topo, "X de Y pagas" e o botão "Marcar todas como pagas" (com confirmação), que age só
  *    nas pendentes do mês selecionado (PATCH /api/despesas/pagas);
- *  - CARTÃO DE CRÉDITO: checkbox "Pago no cartão de crédito" no formulário e na edição (campo `cartao`);
- *    selo "Cartão" na lista; filtro rápido "Só cartão"; card <CartaoCard> no topo, onde se informa o
- *    TOTAL DA FATURA do mês. A parte da fatura que não foi lançada vira a linha CALCULADA "Outras
- *    compras no cartão" (vem pronta da API em `linhaVirtual`; selo "calculada", sem editar/excluir),
- *    somada ao total — nada conta duas vezes (regra em server/src/services/cartao.js);
+ *  - CARTÕES DE CRÉDITO (vários): campo "Cartão" no formulário e na edição (<SeletorCartao>: "Nenhum",
+ *    os cartões com a bolinha de cor e "+ Novo cartão"); selo com a cor e o nome do cartão na lista;
+ *    filtro rápido por cartão; seção <CartoesSecao> no topo com um card por cartão, onde se informa o
+ *    TOTAL DA FATURA do mês. A parte de cada fatura que não foi lançada vira uma linha CALCULADA
+ *    "Outras compras no cartão (nome)" (vem pronta da API em `linhasVirtuais`; selo "calculada", sem
+ *    editar/excluir), somada ao total — nada conta duas vezes (regra em server/src/services/cartao.js);
  *  - exibir o total do mês (das linhas mostradas, incluindo a linha calculada).
  *
  * Responsivo (breakpoints `sm` / `md`, padrões do Tailwind):
@@ -54,9 +55,12 @@ import CategoriaPonto from '../components/CategoriaPonto.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
 import SeletorCategoria from '../components/SeletorCategoria.jsx';
 import GerenciarCategorias from '../components/GerenciarCategorias.jsx';
-import CartaoCard, { IconeCartao } from '../components/CartaoCard.jsx';
+import { IconeCartao } from '../components/CartaoCard.jsx';
+import CartoesSecao from '../components/CartoesSecao.jsx';
+import SeletorCartao from '../components/SeletorCartao.jsx';
+import { useCartoes } from '../hooks/useCartoes.js';
 
-const FORM_VAZIO = { descricao: '', categoria: NOME_OUTROS, valor: '', recorrente: false, cartao: false };
+const FORM_VAZIO = { descricao: '', categoria: NOME_OUTROS, valor: '', recorrente: false, cartaoId: '' }; // '' = sem cartão
 
 /** Selo pequeno (ex.: "Cartão", "calculada") — discreto, no tema. */
 function Selo({ children }) {
@@ -81,28 +85,31 @@ export default function Despesas() {
     // situação do cartão no mês e a linha calculada "Outras compras no cartão" (ou null).
     (data) => {
       if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados));
-      setCartao(data.cartao ?? null);
-      setLinhaVirtual(data.linhaVirtual ?? null);
+      setSituacoes(data.cartoes?.cartoes ?? []);
+      setLinhasVirtuais(data.linhasVirtuais ?? []);
     },
   );
-  const [cartao, setCartao] = useState(null); // { fatura, detalhado, naoDetalhado, excedeu }
-  const [linhaVirtual, setLinhaVirtual] = useState(null); // linha calculada (não é registro salvo)
-  const [soCartao, setSoCartao] = useState(false); // filtro rápido "Só cartão"
+  const cartoes = useCartoes(); // cartões do usuário (lista, criar/editar/excluir, cartão de cada despesa)
+  const { cartaoDaDespesa } = cartoes;
+  const [situacoes, setSituacoes] = useState([]); // situação de cada cartão no mês (fatura, detalhado…)
+  const [linhasVirtuais, setLinhasVirtuais] = useState([]); // linhas calculadas (não são registros salvos)
+  const [filtroCartao, setFiltroCartao] = useState(''); // filtro rápido: '' = todas; senão o id do cartão
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState('');
   const [confirmandoTodas, setConfirmandoTodas] = useState(false); // pergunta "marcar todas?" aberta
   const [erroPaga, setErroPaga] = useState(''); // falha ao sincronizar o status "paga"
 
-  // Linhas mostradas na lista: as despesas (todas ou só as de cartão) + a linha calculada do
-  // cartão no fim (ela também é "de cartão", então aparece nos dois modos).
+  // Linhas mostradas na lista: as despesas (todas ou só as de UM cartão) + as linhas calculadas dos
+  // cartões no fim (no filtro por cartão, só a daquele cartão).
   const itensExibidos = useMemo(() => {
-    const base = soCartao ? despesas.filter((d) => d.cartao) : despesas;
-    return linhaVirtual ? [...base, linhaVirtual] : base;
-  }, [despesas, linhaVirtual, soCartao]);
+    if (!filtroCartao) return [...despesas, ...linhasVirtuais];
+    const doCartao = (d) => String(d.virtual ? d.cartaoId : cartaoDaDespesa(d)?._id) === filtroCartao;
+    return [...despesas.filter(doCartao), ...linhasVirtuais.filter(doCartao)];
+  }, [despesas, linhasVirtuais, filtroCartao, cartaoDaDespesa]);
 
-  // Total das linhas mostradas. Sem filtro = total de despesas do mês JÁ CORRIGIDO pelo cartão
-  // (lançadas + outras compras no cartão), o mesmo do Resumo; com "Só cartão" = total do cartão.
+  // Total das linhas mostradas. Sem filtro = total de despesas do mês JÁ CORRIGIDO pelos cartões
+  // (lançadas + outras compras nos cartões), o mesmo do Resumo; filtrado = total daquele cartão.
   const total = useMemo(
     () => itensExibidos.reduce((soma, d) => soma + Number(d.valor || 0), 0),
     [itensExibidos],
@@ -111,7 +118,7 @@ export default function Despesas() {
   const qtdPagas = despesas.filter((d) => d.paga).length;
   const qtdPendentes = despesas.length - qtdPagas;
   // Soma das despesas pagas (só para os indicadores "Pago / Falta pagar" da linha de total).
-  // (A linha calculada conta como paga quando a fatura está paga.)
+  // (Uma linha calculada conta como paga quando a fatura do cartão dela está paga.)
   const totalPago = useMemo(
     () => itensExibidos.reduce((soma, d) => soma + (d.paga ? Number(d.valor || 0) : 0), 0),
     [itensExibidos],
@@ -170,7 +177,7 @@ export default function Despesas() {
         categoria: form.categoria,
         valor: Number(form.valor),
         recorrente: form.recorrente,
-        cartao: form.cartao, // pago no cartão de crédito
+        cartaoId: form.cartaoId || null, // cartão de crédito (ou nenhum)
         mes, // lança no mês selecionado
       });
       setForm(FORM_VAZIO);
@@ -205,7 +212,7 @@ export default function Despesas() {
       categoria: rascunho.categoria || NOME_OUTROS,
       valor: valorNum,
       recorrente: Boolean(rascunho.recorrente),
-      cartao: Boolean(rascunho.cartao),
+      cartaoId: rascunho.cartao || null, // a coluna "Cartão" guarda o id escolhido ('' = nenhum)
     });
     await recarregar();
   }
@@ -251,21 +258,34 @@ export default function Despesas() {
       render: (d) => (d.recorrente ? <span className="text-accent">↻ Todo mês</span> : '—'),
     },
     {
-      // Pago no cartão de crédito: selo "Cartão" (com ícone) nas marcadas; na edição, uma caixa.
+      // Cartão de crédito: selo com a bolinha de cor e o nome do cartão; na edição, o mesmo seletor
+      // do formulário. Despesas antigas do controle de um cartão só aparecem no cartão padrão.
       chave: 'cartao',
       label: 'Cartão',
       classe: 'text-muted',
-      editor: 'checkbox',
-      rotuloCheckbox: 'Cartão de crédito',
-      render: (d) =>
-        d.cartao ? (
+      editor: 'custom',
+      editorCustom: (valor, onChange) => (
+        <SeletorCartao
+          valor={valor}
+          onChange={onChange}
+          cartoes={cartoes.cartoes}
+          limite={cartoes.limite}
+          criar={cartoes.criar}
+          className="bg-bg"
+        />
+      ),
+      valorEdicao: (d) => (cartaoDaDespesa(d)?._id ? String(cartaoDaDespesa(d)._id) : ''),
+      render: (d) => {
+        const c = d.virtual ? cartoes.cartoes.find((x) => String(x._id) === String(d.cartaoId)) : cartaoDaDespesa(d);
+        return c ? (
           <Selo>
-            <IconeCartao size={12} />
-            Cartão
+            <CategoriaPonto cor={c.cor} />
+            {c.nome}
           </Selo>
         ) : (
           '—'
-        ),
+        );
+      },
     },
     {
       chave: 'valor',
@@ -284,9 +304,14 @@ export default function Despesas() {
         <SeletorMes mes={mes} onChange={trocarMes} />
       </div>
 
-      {/* Cartão de crédito: total da fatura do mês e a parte não detalhada (somada ao total). */}
+      {/* Cartões de crédito: um card por cartão (fatura do mês e parte não detalhada, somada ao total). */}
       {!carregando && !erro && (
-        <CartaoCard mes={mes} cartao={cartao} aoAlterar={() => recarregar({ silencioso: true })} />
+        <CartoesSecao
+          mes={mes}
+          situacoes={situacoes}
+          cartoes={cartoes}
+          aoAlterar={() => recarregar({ silencioso: true })}
+        />
       )}
 
       {/* Andamento dos pagamentos: "X de Y pagas" + "Marcar todas como pagas" (com confirmação). */}
@@ -341,10 +366,10 @@ export default function Despesas() {
       )}
 
       {/* Formulário — 1 coluna no mobile, 2 colunas a partir de `sm` e, em telas largas (`xl`,
-          1280px+), UMA LINHA só: Descrição | Categoria | Valor | Repete + Cartão | Adicionar. */}
+          1280px+), UMA LINHA só: Descrição | Categoria | Cartão | Valor | Repete | Adicionar. */}
       <form
         onSubmit={adicionar}
-        className="grid gap-3 rounded border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto_auto] xl:items-center"
+        className="grid gap-3 rounded border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto_auto] xl:items-center"
       >
         {/* Descrição ocupa a linha inteira no layout de 2 colunas. */}
         <input
@@ -360,6 +385,15 @@ export default function Despesas() {
           onChange={(nome) => setCampo('categoria', nome)}
           className="bg-surface"
         />
+        {/* Cartão de crédito: "Nenhum", os cartões (bolinha de cor) e "+ Novo cartão" sem sair da tela. */}
+        <SeletorCartao
+          valor={form.cartaoId}
+          onChange={(id) => setCampo('cartaoId', id)}
+          cartoes={cartoes.cartoes}
+          limite={cartoes.limite}
+          criar={cartoes.criar}
+          className="bg-surface"
+        />
         <input
           type="number"
           step="0.01"
@@ -371,28 +405,16 @@ export default function Despesas() {
           className={`${INPUT} num`}
           required
         />
-        <div className="flex flex-wrap gap-x-5 sm:col-span-2 xl:col-span-1 xl:flex-col xl:gap-0 xl:px-2">
-          {/* Despesa fixa: o servidor a cria sozinho nos meses seguintes (ao abri-los). */}
-          <label className="flex min-h-[44px] cursor-pointer items-center gap-3 whitespace-nowrap text-base xl:min-h-[32px]">
-            <input
-              type="checkbox"
-              checked={form.recorrente}
-              onChange={(e) => setCampo('recorrente', e.target.checked)}
-              className="h-5 w-5 accent-accent"
-            />
-            Repete todo mês
-          </label>
-          {/* Paga no cartão: entra no "detalhado" da fatura do mês (não conta duas vezes). */}
-          <label className="flex min-h-[44px] cursor-pointer items-center gap-3 whitespace-nowrap text-base xl:min-h-[32px]">
-            <input
-              type="checkbox"
-              checked={form.cartao}
-              onChange={(e) => setCampo('cartao', e.target.checked)}
-              className="h-5 w-5 accent-accent"
-            />
-            Pago no cartão de crédito
-          </label>
-        </div>
+        {/* Despesa fixa: o servidor a cria sozinho nos meses seguintes (ao abri-los), no mesmo cartão. */}
+        <label className="flex min-h-[44px] cursor-pointer items-center gap-3 whitespace-nowrap text-base xl:px-2">
+          <input
+            type="checkbox"
+            checked={form.recorrente}
+            onChange={(e) => setCampo('recorrente', e.target.checked)}
+            className="h-5 w-5 accent-accent"
+          />
+          Repete todo mês
+        </label>
         {erroForm && <p className="text-sm text-negative sm:col-span-2 xl:col-span-full">{erroForm}</p>}
         <button
           disabled={salvando}
@@ -409,27 +431,27 @@ export default function Despesas() {
         </p>
       )}
 
-      {/* Filtro rápido: todas as despesas ou só as pagas no cartão (+ a linha calculada). */}
-      {(despesas.length > 0 || linhaVirtual) && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar despesas">
-          {[
-            { valor: false, rotulo: 'Todas' },
-            { valor: true, rotulo: 'Só cartão' },
-          ].map((op) => (
-            <button
-              key={op.rotulo}
-              type="button"
-              aria-pressed={soCartao === op.valor}
-              onClick={() => setSoCartao(op.valor)}
-              className={[
-                'inline-flex min-h-[44px] items-center gap-2 rounded border px-3 text-sm',
-                soCartao === op.valor ? 'border-accent text-accent' : 'border-border bg-surface text-muted hover:text-fg',
-              ].join(' ')}
-            >
-              {op.valor && <IconeCartao size={14} />}
-              {op.rotulo}
-            </button>
-          ))}
+      {/* Filtro rápido por cartão: "Todas" ou um cartão (as despesas dele + a linha calculada dele). */}
+      {cartoes.cartoes.length > 0 && (despesas.length > 0 || linhasVirtuais.length > 0) && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar despesas por cartão">
+          {[{ _id: '', nome: 'Todas' }, ...cartoes.cartoes].map((c) => {
+            const ativo = filtroCartao === String(c._id);
+            return (
+              <button
+                key={c._id || 'todas'}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setFiltroCartao(String(c._id))}
+                className={[
+                  'inline-flex min-h-[44px] items-center gap-2 rounded border px-3 text-sm',
+                  ativo ? 'border-accent text-accent' : 'border-border bg-surface text-muted hover:text-fg',
+                ].join(' ')}
+              >
+                {c._id ? <CategoriaPonto cor={c.cor} /> : <IconeCartao size={14} />}
+                {c.nome}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -463,7 +485,7 @@ export default function Despesas() {
             </span>
           </>
         }
-        vazio={soCartao ? 'Nenhuma despesa no cartão neste mês.' : 'Nenhuma despesa neste mês.'}
+        vazio={filtroCartao ? 'Nenhuma despesa neste cartão neste mês.' : 'Nenhuma despesa neste mês.'}
         carregando={carregando}
         erro={erro}
       />

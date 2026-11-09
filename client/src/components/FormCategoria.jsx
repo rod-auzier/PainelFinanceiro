@@ -1,9 +1,12 @@
 /**
- * FormCategoria — mini-formulário de categoria (NOME + COR), usado para criar ("+ Nova categoria"
+ * FormCategoria — mini-formulário de NOME + COR. Usado para categorias e também para os CARTÕES de
+ * crédito (mesmas regras: nome de 2 a 24 caracteres e a mesma paleta).
+ * Para categorias: criar ("+ Nova categoria"
  * no seletor do formulário de Despesas e no gerenciamento) e para editar uma categoria existente.
  *
  * Props:
  *  - inicial       {{ nome: string, cor: string }}   valores iniciais.
+ *  - placeholder   {string}   texto de exemplo do nome (padrão "Ex.: Transporte"; cartões: "Ex.: Nubank").
  *  - rotuloSalvar  {string}   texto do botão principal (ex.: "Criar", "Salvar").
  *  - aoSalvar      {({ nome, cor }) => Promise<void>}  chama a API; se lançar erro, a mensagem
  *                             (da API ou do Error) aparece em vermelho no próprio formulário.
@@ -60,7 +63,7 @@ function SeletorCor({ valor, onChange }) {
   );
 }
 
-export default function FormCategoria({ inicial, rotuloSalvar = 'Salvar', aoSalvar, aoCancelar }) {
+export default function FormCategoria({ inicial, placeholder = 'Ex.: Transporte', rotuloSalvar = 'Salvar', aoSalvar, aoCancelar }) {
   const idNome = useId();
   const [nome, setNome] = useState(inicial.nome ?? '');
   const [cor, setCor] = useState(inicial.cor);
@@ -105,7 +108,7 @@ export default function FormCategoria({ inicial, rotuloSalvar = 'Salvar', aoSalv
             value={nome}
             onChange={(e) => setNome(e.target.value)}
             maxLength={NOME_CATEGORIA_MAX}
-            placeholder="Ex.: Transporte"
+            placeholder={placeholder}
             autoFocus
             className={INPUT}
           />

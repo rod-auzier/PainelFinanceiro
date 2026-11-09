@@ -48,9 +48,9 @@ import {
  * de propósito — o fixo gerado sempre entra como NÃO pago (o default do model).
  */
 export const CONFIG_FIXOS = {
-  // `cartao` é copiado (o fixo continua sendo pago no cartão); o valor da FATURA não é copiado —
-  // ela é outro model (FaturaCartao) e muda todo mês.
-  despesa: { Model: Despesa, chaves: ['descricao'], campos: ['descricao', 'categoria', 'valor', 'cartao'] },
+  // `cartao` e `cartaoId` são copiados (o fixo continua sendo pago no MESMO cartão); o valor da FATURA
+  // não é copiado — ela é outro model (FaturaCartao) e muda todo mês.
+  despesa: { Model: Despesa, chaves: ['descricao'], campos: ['descricao', 'categoria', 'valor', 'cartao', 'cartaoId'] },
   receita: { Model: Receita, chaves: ['fonte', 'descricao'], campos: ['fonte', 'descricao', 'valor'] },
 };
 

@@ -9,6 +9,7 @@ import guardadoRoutes from './guardado.routes.js';
 import categoriaRoutes from './categoria.routes.js';
 import caixinhaRoutes from './caixinha.routes.js';
 import faturaRoutes from './fatura.routes.js';
+import cartaoRoutes from './cartao.routes.js';
 
 const router = Router();
 
@@ -32,5 +33,7 @@ router.use('/categorias', categoriaRoutes);
 router.use('/caixinhas', caixinhaRoutes);
 // Faturas do cartão de crédito (total do mês; a parte não detalhada entra no total de despesas).
 router.use('/faturas', faturaRoutes);
+// Cartões de crédito (vários; cada um com a sua fatura por mês).
+router.use('/cartoes', cartaoRoutes);
 
 export default router;

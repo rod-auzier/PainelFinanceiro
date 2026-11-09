@@ -22,6 +22,8 @@
  *             aba Metas). NÃO entra mais no Total guardado: foi substituído pela soma das CAIXINHAS
  *             (aba Porquinho). O campo é mantido no banco (nunca apagado nem alterado) e é lido uma
  *             única vez, na transição: vira a caixinha "Saldo inicial" (services/caixinhas.js).
+ *  - cartoesMigrados : `true` depois que a transição "um cartão → vários cartões" rodou para o usuário
+ *             (criação do cartão padrão "Cartão", se havia dados antigos). Impede repetir.
  *  - caixinhasMigradas : `true` depois que essa transição rodou para o usuário — impede que a
  *             caixinha "Saldo inicial" seja criada de novo. Ausente/`false` em quem ainda não abriu
  *             o app desde a mudança.
@@ -68,6 +70,8 @@ const userSchema = new mongoose.Schema(
     },
     // Marca da transição saldo inicial → caixinhas (ver services/caixinhas.js).
     caixinhasMigradas: { type: Boolean, default: false },
+    // Marca da transição para vários cartões de crédito (ver services/cartao.js).
+    cartoesMigrados: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

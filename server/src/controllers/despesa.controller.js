@@ -9,8 +9,30 @@
 import mongoose from 'mongoose';
 import { Despesa } from '../models/Despesa.js';
 import { gerarFixosDoMes } from '../services/fixos.js';
-import { cartaoDoMes, linhaVirtualCartao } from '../services/cartao.js';
+import { cartoesDoMes, garantirCartaoPadrao, linhasVirtuaisCartoes } from '../services/cartao.js';
+import { lerCartaoId } from './cartao.controller.js';
 import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMes, lerMesOpcional } from '../utils/mes.js';
+
+/**
+ * Lê o cartão de crédito do corpo de uma despesa (criação/edição).
+ *  - `cartaoId` (id de um cartão do usuário, ou `null`/'' = "Nenhum") é o campo novo: grava `cartaoId`
+ *    e mantém `cartao` em sincronia (`true` se tem cartão) — assim uma despesa antiga do cartão padrão
+ *    que passa para "Nenhum" deixa de ser cartão de verdade.
+ *  - Só `cartao` (booleano, controle antigo de um cartão só) continua aceito: `true` = cartão padrão.
+ * @returns {Promise<{ campos: object, erro?: string }>}  `campos` = o que gravar (vazio = não mexe)
+ */
+async function lerCartaoDoCorpo(userId, { cartaoId, cartao }) {
+  if (cartaoId !== undefined) {
+    const r = await lerCartaoId(userId, cartaoId);
+    if (r.erro) return { campos: {}, erro: r.erro };
+    return { campos: { cartaoId: r.cartaoId, cartao: Boolean(r.cartaoId) } };
+  }
+  if (cartao !== undefined) {
+    if (typeof cartao !== 'boolean') return { campos: {}, erro: 'cartao deve ser true ou false' };
+    return { campos: cartao ? { cartao: true } : { cartao: false, cartaoId: null } };
+  }
+  return { campos: {} };
+}
 
 /**
  * Lista as despesas do usuário autenticado.
@@ -27,29 +49,32 @@ import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMes, lerMesOpciona
  *                                              despesas daquele mês. Sem `mes`, devolve todas
  *                                              de MES_INICIAL em diante (sem gerar fixos).
  * @param   {import('express').Response} res
- * @returns {200} `{ despesas: Array<{ _id, userId, ..., valor, recorrente, paga, cartao, createdAt, updatedAt }>,
- *                  fixosGerados: number, cartao?, linhaVirtual? }`
+ * @returns {200} `{ despesas: Array<{ _id, userId, ..., valor, recorrente, paga, cartao, cartaoId, createdAt, updatedAt }>,
+ *                  fixosGerados: number, cartoes?, linhasVirtuais? }`
  *               ordenado por `createdAt` (mais recentes primeiro). `fixosGerados` = quantas
  *               despesas fixas foram criadas automaticamente NESTA chamada (0 na maioria).
- *               Só COM `mes`: `cartao` = situação do cartão no mês (services/cartao.js ->
- *               `cartaoDoMes`) e `linhaVirtual` = a linha CALCULADA "Outras compras no cartão"
- *               (`virtual: true`; não é um registro salvo) ou `null`. Ela NÃO vem dentro de
- *               `despesas` — a tela decide onde mostrá-la.
+ *               Só COM `mes`: `cartoes` = situação de cada cartão no mês (services/cartao.js ->
+ *               `cartoesDoMes`) e `linhasVirtuais` = as linhas CALCULADAS "Outras compras no cartão
+ *               (nome)" (`virtual: true`; não são registros salvos). Elas NÃO vêm dentro de
+ *               `despesas` — a tela decide onde mostrá-las.
+ *               Abrir a tela de Despesas aplica (uma vez) a transição do controle antigo de um
+ *               cartão só: cria o cartão padrão "Cartão" se houver dados antigos.
  * @returns {400} `{ message }` — `mes` fora do formato AAAA-MM ou anterior a MES_INICIAL.
  */
 export async function listarDespesas(req, res) {
   const { mes, erro } = lerMesOpcional(req.query.mes);
   if (erro) return res.status(400).json({ message: erro });
 
+  await garantirCartaoPadrao(req.userId); // 1ª vez: dados do cartão único antigo → cartão "Cartão"
   const fixosGerados = mes ? await gerarFixosDoMes('despesa', req.userId, mes) : 0;
 
   const filtro = { userId: req.userId, ...(mes ? filtroDoMes(mes) : filtroDesdeInicio()) };
   const despesas = await Despesa.find(filtro).sort({ createdAt: -1 });
   if (!mes) return res.json({ despesas, fixosGerados });
 
-  // Cartão de crédito do mês: fatura informada + a parte não detalhada (linha virtual).
-  const cartao = await cartaoDoMes(req.userId, mes);
-  res.json({ despesas, fixosGerados, cartao, linhaVirtual: linhaVirtualCartao(mes, cartao) });
+  // Cartões de crédito do mês: faturas informadas + as partes não detalhadas (linhas virtuais).
+  const cartoes = await cartoesDoMes(req.userId, mes);
+  res.json({ despesas, fixosGerados, cartoes, linhasVirtuais: linhasVirtuaisCartoes(mes, cartoes) });
 }
 
 /**
@@ -63,7 +88,9 @@ export async function listarDespesas(req, res) {
  * @param   {number}  req.body.valor         — quantia a pagar, número ≥ 0. Obrigatório.
  * @param   {string}  [req.body.categoria]   — agrupador (ex.: "Moradia"). Opcional → "Outros".
  * @param   {boolean} [req.body.recorrente]  — "Repete todo mês". Opcional (padrão false).
- * @param   {boolean} [req.body.cartao]      — "Pago no cartão de crédito". Opcional (padrão false).
+ * @param   {string|null} [req.body.cartaoId] — cartão de crédito (id de um cartão do usuário) ou
+ *                                             `null` = nenhum. Opcional (padrão: nenhum).
+ * @param   {boolean} [req.body.cartao]      — (antigo) `true` = cartão padrão. Usado só sem `cartaoId`.
  * @param   {string}  [req.body.mes]         — "AAAA-MM": lança a despesa nesse mês (o
  *                                             `createdAt` fica dentro dele). Sem `mes`, é agora.
  * @returns {201} `{ despesa: {...} }` — documento criado.
@@ -71,7 +98,7 @@ export async function listarDespesas(req, res) {
  *               `recorrente` não booleano ou `mes` mal formatado.
  */
 export async function criarDespesa(req, res) {
-  const { descricao, categoria, valor, recorrente, cartao, mes: mesBruto } = req.body ?? {};
+  const { descricao, categoria, valor, recorrente, mes: mesBruto } = req.body ?? {};
 
   if (!descricao || valor == null) {
     return res.status(400).json({ message: 'descricao e valor são obrigatórios' });
@@ -83,9 +110,8 @@ export async function criarDespesa(req, res) {
   if (recorrente !== undefined && typeof recorrente !== 'boolean') {
     return res.status(400).json({ message: 'recorrente deve ser true ou false' });
   }
-  if (cartao !== undefined && typeof cartao !== 'boolean') {
-    return res.status(400).json({ message: 'cartao deve ser true ou false' });
-  }
+  const cartaoLido = await lerCartaoDoCorpo(req.userId, req.body ?? {});
+  if (cartaoLido.erro) return res.status(400).json({ message: cartaoLido.erro });
   const { mes, erro } = lerMesOpcional(mesBruto);
   if (erro) return res.status(400).json({ message: erro });
 
@@ -95,7 +121,9 @@ export async function criarDespesa(req, res) {
     categoria,
     valor: valorNum,
     recorrente: recorrente ?? false,
-    cartao: cartao ?? false,
+    cartao: false, // padrão: não é cartão (sobrescrito por `cartaoLido` quando informado)
+    cartaoId: null,
+    ...cartaoLido.campos,
     createdAt: createdAtParaMes(mes),
   });
 
@@ -114,7 +142,8 @@ export async function criarDespesa(req, res) {
  * @param   {number}  req.body.valor        — quantia a pagar, número ≥ 0. Obrigatório.
  * @param   {string}  [req.body.categoria]  — agrupador. Opcional.
  * @param   {boolean} [req.body.recorrente] — "Repete todo mês". Só muda se enviado.
- * @param   {boolean} [req.body.cartao]     — "Pago no cartão de crédito". Só muda se enviado.
+ * @param   {string|null} [req.body.cartaoId] — cartão (ou `null` = nenhum). Só muda se enviado.
+ * @param   {boolean} [req.body.cartao]     — (antigo) `true` = cartão padrão. Usado só sem `cartaoId`.
  *          (O status `paga` NUNCA é alterado por aqui — use PATCH /api/despesas/:id.)
  * @returns {200} `{ despesa: {...} }` — documento já com os novos valores.
  * @returns {400} `{ message }` — `:id` inválido, ou `descricao`/`valor` ausentes/inválidos,
@@ -127,7 +156,7 @@ export async function atualizarDespesa(req, res) {
     return res.status(400).json({ message: 'id inválido' });
   }
 
-  const { descricao, categoria, valor, recorrente, cartao } = req.body ?? {};
+  const { descricao, categoria, valor, recorrente } = req.body ?? {};
 
   if (!descricao || valor == null) {
     return res.status(400).json({ message: 'descricao e valor são obrigatórios' });
@@ -140,13 +169,11 @@ export async function atualizarDespesa(req, res) {
     return res.status(400).json({ message: 'recorrente deve ser true ou false' });
   }
 
-  if (cartao !== undefined && typeof cartao !== 'boolean') {
-    return res.status(400).json({ message: 'cartao deve ser true ou false' });
-  }
+  const cartaoLido = await lerCartaoDoCorpo(req.userId, req.body ?? {});
+  if (cartaoLido.erro) return res.status(400).json({ message: cartaoLido.erro });
 
-  const alteracoes = { descricao, categoria, valor: valorNum };
+  const alteracoes = { descricao, categoria, valor: valorNum, ...cartaoLido.campos };
   if (recorrente !== undefined) alteracoes.recorrente = recorrente;
-  if (cartao !== undefined) alteracoes.cartao = cartao;
 
   const despesa = await Despesa.findOneAndUpdate(
     { _id: req.params.id, userId: req.userId },
