@@ -135,7 +135,7 @@ Finanças/
         │   ├── env.js          # Lê e valida variáveis de ambiente
         │   └── db.js           # Conexão Mongoose cacheada (serverless-safe)
         ├── models/
-        │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), nome, sobrenome, saldoInicial (legado), caixinhasMigradas }
+        │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), nome, sobrenome, saldoInicial (legado), caixinhasMigradas, caixinhasReferencia, cartoesMigrados }
         │   ├── Caixinha.js     # { userId, nome (2–30), valor ≥ 0, createdAt } — aba Porquinho
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
         │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, cartao (antigo), cartaoId, createdAt }
@@ -583,8 +583,20 @@ O "total guardado" também garante a geração de todos os meses até o atual an
 
 O **Total guardado** (Porquinho e Metas) conta apenas **meses fechados**:
 
-> **Total guardado = Σ valores das caixinhas + Σ (receitas − despesas corrigidas pelo cartão) de cada mês, de outubro/2026
-> (`MES_INICIAL`) até o mês ANTERIOR ao mês atual.** O mês em andamento **não entra** no total.
+> **Total guardado = Σ valores das caixinhas + Σ (receitas − despesas corrigidas pelo cartão) de cada mês FECHADO
+> a partir do MÊS DE REFERÊNCIA das caixinhas até o mês ANTERIOR ao mês atual.** O mês em andamento **não
+> entra** no total.
+
+**Mês de referência das caixinhas** (`caixinhasReferencia` no usuário, "AAAA-MM"): o mês em que você
+conferiu os saldos das caixinhas. Assim os valores das caixinhas podem ser o **saldo atual** — os meses
+fechados **antes** da referência já estão dentro deles e **não são somados de novo**.
+- Padrão **2026-10** (`MES_INICIAL`) para quem já existia — o total ficou exatamente igual.
+- Exemplo: referência **novembro/2026** e uma caixinha com R$ 3.870 → o total é **R$ 3.870** agora; em
+  **01/12/2026** entra o resultado de novembro.
+- A **média guardada por mês** (e por isso o ritmo da previsão das metas) **não depende da referência**:
+  usa todos os meses fechados desde outubro/2026. A previsão parte do novo total.
+- Escolhida na aba Porquinho (de out/2026 até o mês atual) → `PATCH /api/caixinhas/referencia`. Cálculo
+  central em `server/src/services/guardado.js` (`calcularGuardado`).
 
 Exemplo — hoje é 07/11/2026: **entra outubro**; novembro só passa a entrar em **01/12/2026**,
 dezembro em 01/01/2027, e assim por diante. Meses futuros também não entram. Como as barras de
@@ -627,7 +639,8 @@ Binance" R$ 30.000). A **soma das caixinhas** substituiu o antigo campo único "
 guardado" da aba Metas.
 
 **Card "Total guardado"** (topo): valor grande em verde e a composição —
-*Caixinhas (saldo em 01/10/2026)*, *Receitas − despesas (meses fechados, desde out/2026)*,
+*Caixinhas (saldo em início de <mês de referência>)*, *Receitas − despesas (meses fechados, desde <mês
+de referência>)*,
 *Média guardada por mês (base: N meses)* (só com ao menos 1 mês fechado) e, discreta, *Mês em
 andamento (novembro/2026), entra em 01/12/2026* (parcial, ainda fora do total). Ver
 [Total guardado: só meses fechados](#total-guardado-só-meses-fechados).
@@ -647,6 +660,12 @@ andamento (novembro/2026), entra em 01/12/2026* (parcial, ainda fora do total). 
   calculado a partir da lista na tela) e, se a API falhar, volta ao estado anterior e mostra o erro.
 - **Regras** (validadas no servidor): nome de **2 a 30 caracteres**, valor **número ≥ 0**, **no
   máximo 20 caixinhas** por usuário.
+
+**Mês de referência dos saldos**: na seção Caixinhas, "Os valores das caixinhas são o saldo de: [mês]"
+(de out/2026 até o mês atual), com a ajuda "Escolha o mês em que você conferiu estes saldos. Meses
+fechados antes dele já estão incluídos nos valores e não são somados de novo." Ao editar o valor de uma
+caixinha aparece um lembrete discreto para conferir esse mês (não bloqueia). Ver
+[Total guardado: só meses fechados](#total-guardado-só-meses-fechados).
 
 **Transição do antigo "Saldo inicial guardado" (sem migração em massa)**
 - O campo `saldoInicial` do usuário **continua no banco** (não foi apagado nem alterado), mas não
@@ -875,10 +894,12 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/guardado`       | sim  | —                                                 | `200 { totalCaixinhas, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — `total` = soma das caixinhas + só meses fechados; `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total). (O antigo `PUT /api/guardado` do saldo inicial foi removido.) |
+| GET    | `/api/guardado`       | sim  | —                                                 | `200 { totalCaixinhas, caixinhasReferencia, saldoAcumulado, saldoHistorico, total, mesesFechados, mediaMensal, emAndamento }` — `total` = soma das caixinhas + `saldoAcumulado` (meses fechados a partir da referência); `saldoHistorico` = todos os meses fechados (base da média); `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total). (O antigo `PUT /api/guardado` do saldo inicial foi removido.) |
 | GET    | `/api/caixinhas`      | sim  | —                                                 | `200 { caixinhas: [{ _id, nome, valor, createdAt, updatedAt }], limite, guardado }` (ordem de criação; na 1ª vez cria a caixinha "Saldo inicial" a partir do saldo antigo; `guardado` = o mesmo objeto de `GET /api/guardado`, ou `null` se falhar) |
 | POST   | `/api/caixinhas`      | sim  | `{ nome, valor }` (nome 2–30; valor número ≥ 0)    | `201 { caixinha }` · `400` (validação / limite de 20) |
 | PATCH  | `/api/caixinhas/:id`  | sim  | `{ nome?, valor? }` (ao menos um)                  | `200 { caixinha }` · `400` · `404` |
+| GET    | `/api/caixinhas/referencia` | sim | —                                             | `200 { referencia: "AAAA-MM" }` (padrão "2026-10") |
+| PATCH  | `/api/caixinhas/referencia` | sim | `{ mes }` ("AAAA-MM", de 2026-10 até o mês atual) | `200 { referencia, guardado }` (total recalculado) · `400` |
 | DELETE | `/api/caixinhas/:id`  | sim  | —                                                 | `204` · `400` (id inválido) · `404` |
 | GET    | `/api/cartoes`        | sim  | —                                                 | `200 { cartoes: [{ _id, nome, cor, padrao, qtdDespesas }], limite }` (aplica a transição do cartão padrão na 1ª vez) |
 | POST   | `/api/cartoes`        | sim  | `{ nome, cor }` (nome 2–24; cor `#RRGGBB`)         | `201 { cartao }` · `400` (validação / limite de 5) · `409` (nome repetido) |

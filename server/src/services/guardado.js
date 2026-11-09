@@ -1,9 +1,14 @@
 /**
  * "Total guardado" e conclusão automática das Metas.
  *
- * REGRA DOS MESES FECHADOS
- *   TOTAL GUARDADO = Σ valores das CAIXINHAS do usuário (aba Porquinho; saldo em 01/10/2026)
- *                  + Σ (receitas − despesas) de cada mês FECHADO
+ * REGRA DOS MESES FECHADOS + MÊS DE REFERÊNCIA DAS CAIXINHAS
+ *   TOTAL GUARDADO = Σ valores das CAIXINHAS do usuário (aba Porquinho)
+ *                  + Σ (receitas − despesas) de cada mês FECHADO com mês ≥ REFERÊNCIA
+ *   REFERÊNCIA = `User.caixinhasReferencia` ("AAAA-MM"): o mês em que o usuário conferiu os saldos das
+ *   caixinhas. Os meses fechados ANTES dela já estão dentro desses valores e NÃO são somados de novo.
+ *   Padrão MES_INICIAL (2026-10) — quem nunca escolheu fica exatamente como antes.
+ *   Ex.: referência 2026-11 e caixinha de R$ 3.870 → total R$ 3.870 em novembro; em 01/12 entra o
+ *   resultado de novembro.
  *   As despesas de cada mês já vêm CORRIGIDAS pelo cartão de crédito (fatura informada − parte já
  *   detalhada; ver services/cartao.js -> totalDespesasCorrigido), igual ao Resumo.
  *   (As caixinhas substituíram o antigo campo único "saldo inicial guardado"; a transição é feita
@@ -16,6 +21,8 @@
  *   a tela mostrar — ele ainda não está somado ao total.
  *
  * MÉDIA MENSAL GUARDADA (base da PREVISÃO das metas)
+ *   NÃO depende da referência: usa o histórico de TODOS os meses fechados desde MES_INICIAL (a
+ *   previsão, porém, parte do total acima, que depende dela).
  *   média = (receitas − despesas dos meses FECHADOS) ÷ quantidade de meses fechados — ou seja,
  *   a média de (receitas − despesas) por mês fechado, com a MESMA regra do total (o mês atual
  *   não entra; fuso America/Fortaleza). Sem nenhum mês fechado não há média (`null`). A API
@@ -42,14 +49,27 @@
  */
 import { Receita } from '../models/Receita.js';
 import { Meta } from '../models/Meta.js';
+import { User } from '../models/User.js';
 import { garantirMigracaoCaixinhas, somarCaixinhas } from './caixinhas.js';
 import { garantirFixosAteMesAtual } from './fixos.js';
-import { somarMesesFechados, somarValor } from './totais.js';
+import { somarComFiltro, somarMesesFechados, somarValor } from './totais.js';
 import { totalDespesasCorrigido } from './cartao.js';
-import { MES_INICIAL, mesAtual, mesSeguinte, mesesEntre } from '../utils/mes.js';
+import { MES_INICIAL, limitesDoMes, mesAtual, mesSeguinte, mesValido, mesesEntre } from '../utils/mes.js';
 
 /** Arredonda para centavos (evita 4999.999999… em somas de ponto flutuante). */
 export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
+
+/**
+ * Mês de REFERÊNCIA das caixinhas de um usuário (o mês em que os saldos foram conferidos).
+ * Usuários que nunca escolheram (campo ausente) ou com valor inválido → MES_INICIAL, o que mantém o
+ * total exatamente como era antes desta regra.
+ * @param   {{ caixinhasReferencia?: string } | null} usuario
+ * @returns {string} "AAAA-MM"
+ */
+export function referenciaDasCaixinhas(usuario) {
+  const ref = usuario?.caixinhasReferencia;
+  return ref && mesValido(ref) && ref >= MES_INICIAL ? ref : MES_INICIAL;
+}
 
 /**
  * Calcula o total guardado do usuário (só MESES FECHADOS) e o parcial do mês em andamento,
@@ -60,17 +80,22 @@ export const arredondar = (n) => Math.round(Number(n) * 100) / 100;
  *                           Parâmetro para testes.
  * @returns {Promise<{
  *   totalCaixinhas: number,
+ *   caixinhasReferencia: string,
  *   saldoAcumulado: number,
+ *   saldoHistorico: number,
  *   total: number,
  *   mesesFechados: number,
  *   mediaMensal: number | null,
  *   emAndamento: null | { mes: string, receitas: number, despesas: number, saldo: number, entraEm: string }
  * }>}
- *   - `saldoAcumulado` = receitas − despesas dos meses FECHADOS (de MES_INICIAL ao mês anterior ao atual);
+ *   - `saldoAcumulado` = receitas − despesas dos meses FECHADOS a partir da REFERÊNCIA (inclusive) até o
+ *                        mês anterior ao atual — o que se soma às caixinhas;
+ *   - `saldoHistorico` = receitas − despesas de TODOS os meses fechados desde MES_INICIAL (base da média);
+ *   - `caixinhasReferencia` = o mês de referência das caixinhas ("AAAA-MM");
  *   - `totalCaixinhas` = soma dos valores das caixinhas (antes: o "saldo inicial guardado");
  *   - `total`          = totalCaixinhas + saldoAcumulado (o mês em andamento NÃO está incluído);
  *   - `mesesFechados`  = quantos meses fechados existem (de MES_INICIAL ao mês anterior ao atual; 0 no 1º mês);
- *   - `mediaMensal`    = saldoAcumulado ÷ mesesFechados (média guardada por mês; negativa se gastou
+ *   - `mediaMensal`    = saldoHistorico ÷ mesesFechados (média guardada por mês; negativa se gastou
  *                        mais do que recebeu), ou `null` quando `mesesFechados` é 0;
  *   - `emAndamento`    = resultado parcial do mês atual, que ainda NÃO está no total: `mes` ("AAAA-MM"),
  *                        `receitas`, `despesas`, `saldo` e `entraEm` (data "AAAA-MM-DD" em que passa a
@@ -82,25 +107,49 @@ export async function calcularGuardado(userId, hoje = mesAtual()) {
   await garantirMigracaoCaixinhas(userId); // 1ª vez: saldo inicial antigo → caixinha "Saldo inicial"
 
   const painelComecou = hoje >= MES_INICIAL;
-  const [somaCaixinhas, receitasFechadas, despesasFechadas, receitasMes, despesasMes] = await Promise.all([
+  const usuario = await User.findById(userId).select('caixinhasReferencia').lean();
+  const referencia = referenciaDasCaixinhas(usuario);
+
+  /**
+   * Resultado (receitas − despesas CORRIGIDAS pelo cartão, a mesma função do Resumo) dos meses
+   * FECHADOS a partir de `desde` (inclusive) até o mês atual (exclusivo). 0 se não há mês fechado.
+   */
+  const resultadoFechadosDesde = async (desde) => {
+    if (desde >= hoje) return 0; // nenhum mês fechado a partir de `desde`
+    const [receitas, despesas] = await Promise.all([
+      desde === MES_INICIAL
+        ? somarMesesFechados(Receita, userId, hoje)
+        : somarComFiltro(Receita, userId, {
+            createdAt: { $gte: limitesDoMes(desde).inicio, $lt: limitesDoMes(hoje).inicio },
+          }),
+      totalDespesasCorrigido(userId, { desde, ate: hoje }).then((d) => d.total),
+    ]);
+    return receitas - despesas;
+  };
+
+  const [somaCaixinhas, historico, desdeReferencia, receitasMes, despesasMes] = await Promise.all([
     somarCaixinhas(userId),
-    somarMesesFechados(Receita, userId, hoje),
-    // Despesas CORRIGIDAS pelo cartão (mesma função do Resumo): meses fechados = de MES_INICIAL até o
-    // mês atual (exclusivo). Sem mês fechado ainda, 0.
-    hoje > MES_INICIAL ? totalDespesasCorrigido(userId, { desde: MES_INICIAL, ate: hoje }).then((d) => d.total) : 0,
+    // Todos os meses fechados desde MES_INICIAL: base da MÉDIA (não depende da referência).
+    resultadoFechadosDesde(MES_INICIAL),
+    // Só os meses fechados a partir da REFERÊNCIA: o que soma ao total (os anteriores já estão nas
+    // caixinhas). Com a referência em MES_INICIAL é o mesmo valor — não consulta de novo.
+    referencia === MES_INICIAL ? null : resultadoFechadosDesde(referencia),
     painelComecou ? somarValor(Receita, userId, hoje) : 0,
     painelComecou ? totalDespesasCorrigido(userId, { mes: hoje }).then((d) => d.total) : 0,
   ]);
 
   const totalCaixinhas = arredondar(somaCaixinhas);
-  const saldoAcumulado = arredondar(receitasFechadas - despesasFechadas);
+  const saldoHistorico = arredondar(historico);
+  const saldoAcumulado = arredondar(desdeReferencia ?? historico);
   // Meses fechados: de MES_INICIAL (inclusive) até o mês atual (exclusive). 0 em outubro/2026.
   const mesesFechados = mesesEntre(MES_INICIAL, hoje);
-  const mediaMensal = mesesFechados > 0 ? arredondar(saldoAcumulado / mesesFechados) : null;
+  const mediaMensal = mesesFechados > 0 ? arredondar(saldoHistorico / mesesFechados) : null;
 
   return {
     totalCaixinhas,
+    caixinhasReferencia: referencia,
     saldoAcumulado,
+    saldoHistorico,
     total: arredondar(totalCaixinhas + saldoAcumulado),
     mesesFechados,
     mediaMensal,

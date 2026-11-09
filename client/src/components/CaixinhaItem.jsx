@@ -8,6 +8,8 @@
  *  - onSalvar  {(caixinha, { nome, valor }) => Promise<void>}  edição (a tela faz a atualização
  *              otimista e lança Error se a API falhar — a mensagem aparece aqui).
  *  - onExcluir {(caixinha) => void}  chamado depois da confirmação.
+ *  - lembrete  {string}  (opcional) aviso pequeno mostrado ao EDITAR (ex.: conferir o mês de
+ *              referência dos saldos) — só informa, não bloqueia.
  *  - pendente  {boolean} caixinha recém-adicionada que a API ainda não confirmou (id provisório):
  *              sem editar/excluir até chegar o id real.
  *
@@ -49,7 +51,7 @@ function IconeLixeira() {
   );
 }
 
-export default function CaixinhaItem({ caixinha, cor, onSalvar, onExcluir, pendente = false }) {
+export default function CaixinhaItem({ caixinha, cor, onSalvar, onExcluir, pendente = false, lembrete }) {
   const [modo, setModo] = useState('ver'); // 'ver' | 'editar' | 'excluir'
   const [nome, setNome] = useState('');
   const [valor, setValor] = useState('');
@@ -110,6 +112,8 @@ export default function CaixinhaItem({ caixinha, cor, onSalvar, onExcluir, pende
             className={`${INPUT} num sm:w-40 sm:shrink-0`}
           />
         </div>
+        {/* Lembrete discreto (não bloqueia): o valor deve bater com o mês de referência escolhido. */}
+        {lembrete && <p className="text-xs text-accent">{lembrete}</p>}
         {erro && (
           <p role="alert" className="text-sm text-negative">
             {erro}
