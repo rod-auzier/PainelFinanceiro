@@ -108,6 +108,7 @@ Finanças/
 │       │   ├── CategoriasDonut.jsx          # Resumo: rosca (SVG) + lista por categoria, com destaque cruzado
 │       │   ├── MaioresDespesas.jsx          # Resumo: as 5 maiores despesas do mês
 │       │   ├── CategoriaPonto.jsx           # bolinha com a cor da categoria do usuário
+│       │   ├── CartaoCard.jsx               # Despesas: card "Cartão de crédito" (fatura do mês, não detalhado, fatura paga)
 │       │   ├── SeletorCategoria.jsx         # campo Categoria com bolinhas + "+ Nova categoria" (mini-formulário)
 │       │   ├── FormCategoria.jsx            # mini-formulário de categoria: nome + grade de cores
 │       │   └── GerenciarCategorias.jsx      # seção "Categorias" da tela de Despesas (criar/editar/excluir)
@@ -116,7 +117,7 @@ Finanças/
 │           ├── Registro.jsx    # Tela de cadastro (com Nome e Sobrenome)
 │           ├── Perfil.jsx      # Perfil: nome/sobrenome + alterar senha
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
-│           ├── Despesas.jsx    # Formulário + tabela + total de despesas + seção Categorias
+│           ├── Despesas.jsx    # Formulário + tabela + total de despesas + cartão de crédito + seção Categorias
 │           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
 │           ├── Porquinho.jsx   # Caixinhas + total guardado (atualização otimista)
 │           └── Metas.jsx       # card compacto do total + metas com valor/progresso (atualização otimista)
@@ -135,7 +136,8 @@ Finanças/
         │   ├── User.js         # { email único, senha (hash bcrypt via bcryptjs), nome, sobrenome, saldoInicial (legado), caixinhasMigradas }
         │   ├── Caixinha.js     # { userId, nome (2–30), valor ≥ 0, createdAt } — aba Porquinho
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
-        │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, createdAt }
+        │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, cartao, createdAt }
+        │   ├── FaturaCartao.js # { userId, mes "AAAA-MM", valor, paga } — fatura do cartão (1 por mês)
         │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
         │   ├── Categoria.js    # { userId, nome (2–24, único por usuário sem diferenciar maiúsculas), cor, createdAt }
         │   └── FixosGerados.js # marcador (usuário, tipo, mês) da geração automática de fixos
@@ -150,7 +152,8 @@ Finanças/
         │   ├── totais.js       # somarValor / somarMesesFechados: somas de receitas/despesas (aggregation)
         │   ├── guardado.js     # total guardado (só meses fechados) + parcial do mês + conclusão automática das metas
         │   ├── caixinhas.js    # transição do saldo inicial → caixinha "Saldo inicial" (1 vez) + soma
-        │   └── categorias.js   # categorias padrão no 1º acesso, "Outros" protegida, contagem de despesas por categoria
+        │   ├── categorias.js   # categorias padrão no 1º acesso, "Outros" protegida, contagem de despesas por categoria
+        │   └── cartao.js       # ★ cálculo CENTRAL do cartão: max(fatura, detalhado), linha virtual, total corrigido
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
@@ -159,7 +162,8 @@ Finanças/
         │   ├── meta.controller.js     # listar, criar, atualizar (PATCH), remover (por userId)
         │   ├── guardado.controller.js # total guardado (GET)
         │   ├── caixinha.controller.js # listar (+ total guardado), criar, editar, excluir (por userId)
-        │   └── categoria.controller.js # listar, criar, renomear/recolorir, excluir (por userId)
+        │   ├── categoria.controller.js # listar, criar, renomear/recolorir, excluir (por userId)
+        │   └── fatura.controller.js # fatura do mês: obter, salvar, marcar paga, remover (por userId)
         └── routes/
             ├── index.js           # Agrupa as rotas sob /api (+ /health)
             ├── auth.routes.js     # /api/register, /api/login, /api/me e /api/auth/{me,perfil,senha}
@@ -169,7 +173,8 @@ Finanças/
             ├── meta.routes.js     # /api/metas     (protegida)
             ├── guardado.routes.js # /api/guardado  (protegida)
             ├── caixinha.routes.js # /api/caixinhas (protegida)
-            └── categoria.routes.js # /api/categorias (protegida)
+            ├── categoria.routes.js # /api/categorias (protegida)
+            └── fatura.routes.js # /api/faturas (protegida)
 ```
 
 ---
@@ -391,6 +396,53 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 - No **Resumo**, o card *Total de despesas* mostra **Pago** e **Falta pagar** (esta em amarelo
   `#D4A24C`) com uma barrinha fina do que já foi pago. Vale para qualquer mês navegável.
 
+### Cartão de crédito (sem contar nada duas vezes)
+
+**O problema**: algumas despesas (ex.: Internet R$ 130, Energia) são pagas no cartão, e a **fatura**
+(ex.: R$ 500) já **inclui** essas despesas. Lançar a fatura inteira como despesa faria a Internet
+contar duas vezes. Por isso você lança as despesas de cartão que quiser detalhar e informa **só o
+total da fatura** do mês — o painel calcula o resto.
+
+**Como usar** (tela de Despesas)
+1. Ao lançar ou editar uma despesa paga no cartão, marque **"Pago no cartão de crédito"** — ela ganha
+   o selo **Cartão** na lista. O filtro rápido **Só cartão** mostra só elas.
+2. No card **Cartão de crédito** (topo da tela), informe a **Fatura total do mês (R$)** e *Salvar*
+   (*Remover* apaga só a fatura informada; nenhuma despesa é tocada).
+3. O card mostra **Detalhado nas despesas** (soma das marcadas como cartão) e, em destaque, **Outras
+   compras no cartão (não detalhadas)** — a diferença, que foi **somada ao total de despesas**.
+4. **Fatura paga**: marca a fatura e também as despesas de cartão do mês ainda pendentes; a parte não
+   detalhada passa a contar como paga em "Pago / Falta pagar". **Desmarcar desfaz só o que essa ação
+   marcou** (despesas que você já tinha marcado à mão continuam pagas).
+- Sem fatura informada, o card diz: "Informe o total da fatura para contar também as compras que você
+  não lançou" — e **nada muda**: cada despesa de cartão conta uma vez, normalmente.
+
+**A conta (por mês)** — função central `services/cartao.js` (`calcularCartao` + `totalDespesasCorrigido`):
+
+```
+detalhado    = Σ despesas do mês com cartao = true
+SEM fatura   → nada muda (cada despesa de cartão conta uma vez)
+COM fatura   → naoDetalhado = max(0, fatura − detalhado)
+               total de despesas = despesas que NÃO são cartão + max(fatura, detalhado)
+                                 = todas as despesas lançadas + naoDetalhado
+```
+
+- O `max(0, …)` impede valor negativo; se o **detalhado passar da fatura** (valor desatualizado,
+  compra que só cai na próxima fatura…), vale o detalhado e aparece um aviso discreto: "Suas despesas
+  de cartão passam do total da fatura informado".
+- **Linha virtual "Outras compras no cartão"**: o `naoDetalhado` aparece na lista de Despesas do mês
+  como uma linha **calculada** (selo "calculada", sem editar/excluir/marcar), na categoria **Outros**.
+  **Não é um registro salvo** — a API a monta na hora (`linhaVirtual` em `GET /api/despesas?mes=`).
+  A linha de Total da lista a considera.
+- **Vale em todo lugar** (a mesma função no backend, para os números nunca divergirem): Resumo (saldo,
+  total de despesas — com o texto "inclui R$ Y de outras compras no cartão" —, barra de
+  comprometimento, Pago/Falta pagar), rosca por categoria (a linha conta em "Outros"), maiores despesas
+  e o **Total guardado / média / previsão** do Porquinho e das Metas (meses fechados e mês em andamento;
+  a regra de meses fechados não mudou).
+- **Dados existentes**: o campo `cartao` é novo e opcional — as despesas antigas valem como "não é
+  cartão". Nenhuma migração. Os **fixos** copiados para o mês seguinte **mantêm o `cartao`** da
+  original; o **valor da fatura não é copiado** (muda todo mês). Uma fatura por usuário e mês
+  (`FaturaCartao`, índice único), sempre filtrada pelo `userId`.
+
 ### Categorias personalizadas
 
 As categorias de despesa são **de cada usuário**: dá para criar, editar (nome e cor) e excluir.
@@ -509,7 +561,7 @@ O "total guardado" também garante a geração de todos os meses até o atual an
 
 O **Total guardado** (Porquinho e Metas) conta apenas **meses fechados**:
 
-> **Total guardado = Σ valores das caixinhas + Σ (receitas − despesas) de cada mês, de outubro/2026
+> **Total guardado = Σ valores das caixinhas + Σ (receitas − despesas corrigidas pelo cartão) de cada mês, de outubro/2026
 > (`MES_INICIAL`) até o mês ANTERIOR ao mês atual.** O mês em andamento **não entra** no total.
 
 Exemplo — hoje é 07/11/2026: **entra outubro**; novembro só passa a entrar em **01/12/2026**,
@@ -790,13 +842,13 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao?, recorrente?, mes? }`  | `201 { receita }` · `400`                            |
 | PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao?, recorrente? }`        | `200 { receita }` · `400` · `404`                    |
 | DELETE | `/api/receitas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...], fixosGerados }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante) |
-| POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, mes? }` | `201 { despesa }` · `400`                         |
-| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente? }`    | `200 { despesa }` · `400` · `404` (não altera `paga`) |
+| GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...], fixosGerados, cartao?, linhaVirtual? }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante). Com `mes`: `cartao` = `{ fatura, detalhado, naoDetalhado, totalCartao, excedeu }` e `linhaVirtual` = a linha calculada "Outras compras no cartão" (ou `null`) |
+| POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, cartao?, mes? }` | `201 { despesa }` · `400`                |
+| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente?, cartao? }` | `200 { despesa }` · `400` · `404` (não altera `paga`) |
 | PATCH  | `/api/despesas/:id`   | sim  | `{ paga: boolean }`                                | `200 { despesa }` · `400` · `404`                    |
 | PATCH  | `/api/despesas/pagas` | sim  | `{ mes: "AAAA-MM" }`                               | `200 { atualizadas }` (marca as pendentes do mês) · `400` |
 | DELETE | `/api/despesas/:id`   | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
-| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, saldo, totalPago, faltaPagar, fixosGerados }` (`totalPago`/`faltaPagar` são só informativos; o saldo usa todas as despesas) (do mês; sem `mes`, de out/2026 em diante) |
+| GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, outrasComprasCartao, cartaoExcedeu, saldo, totalPago, faltaPagar, fixosGerados }` — `totalDespesas` já CORRIGIDO pelo cartão (inclui `outrasComprasCartao`); `totalPago`/`faltaPagar` são só informativos (do mês; sem `mes`, de out/2026 em diante) |
 | GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado }` (mais recentes primeiro; já sincronizadas; `guardado` = o mesmo objeto de `GET /api/guardado`, numa chamada só) |
 | POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
 | PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
@@ -806,6 +858,10 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/caixinhas`      | sim  | `{ nome, valor }` (nome 2–30; valor número ≥ 0)    | `201 { caixinha }` · `400` (validação / limite de 20) |
 | PATCH  | `/api/caixinhas/:id`  | sim  | `{ nome?, valor? }` (ao menos um)                  | `200 { caixinha }` · `400` · `404` |
 | DELETE | `/api/caixinhas/:id`  | sim  | —                                                 | `204` · `400` (id inválido) · `404` |
+| GET    | `/api/faturas`        | sim  | query `?mes=AAAA-MM`                               | `200 { fatura: { mes, valor, paga } \| null, temFatura, detalhado, naoDetalhado, totalCartao, excedeu }` · `400` |
+| PUT    | `/api/faturas/:mes`   | sim  | `{ valor }` (número ≥ 0)                           | `200` situação do cartão (cria ou atualiza) · `400` |
+| PATCH  | `/api/faturas/:mes/paga` | sim | `{ paga: boolean }`                             | `200` situação + `despesasAlteradas` (marca/desmarca as despesas de cartão do mês) · `400` · `404` (sem fatura) |
+| DELETE | `/api/faturas/:mes`   | sim  | —                                                 | `204` · `400` · `404` |
 | GET    | `/api/categorias`     | sim  | —                                                 | `200 { categorias: [{ _id, nome, cor, qtdDespesas, ... }], limite }` (cria as 5 padrão no 1º acesso; `qtdDespesas` = despesas de todos os meses com esse nome) |
 | POST   | `/api/categorias`     | sim  | `{ nome, cor }` (nome 2–24; cor `#RRGGBB`)         | `201 { categoria }` · `400` (validação / limite de 15) · `409` (nome repetido) |
 | PATCH  | `/api/categorias/:id` | sim  | `{ nome?, cor? }` (ao menos um)                    | `200 { categoria, despesasAtualizadas }` (renomear leva as despesas junto) · `400` (validação / renomear "Outros") · `404` · `409` |

@@ -3,9 +3,9 @@
  * Agrega os valores das receitas e despesas do usuário autenticado.
  */
 import { Receita } from '../models/Receita.js';
-import { Despesa } from '../models/Despesa.js';
 import { gerarFixosDoMesTodos } from '../services/fixos.js';
-import { somarPagas, somarValor } from '../services/totais.js';
+import { somarValor } from '../services/totais.js';
+import { cartaoDoMes, totalDespesasCorrigido } from '../services/cartao.js';
 import { lerMesOpcional } from '../utils/mes.js';
 
 /**
@@ -23,9 +23,13 @@ import { lerMesOpcional } from '../utils/mes.js';
  *   ```
  *   {
  *     "totalReceitas": number,  // soma de todos os Receita.valor (do mês, se informado)
- *     "totalDespesas": number,  // soma de todos os Despesa.valor (do mês, se informado)
+ *     "totalDespesas": number,  // despesas lançadas + "outras compras no cartão" (parte da fatura
+ *                               // não detalhada) — total CORRIGIDO, ver services/cartao.js
+ *     "outrasComprasCartao": number, // a parte não detalhada das faturas incluída em totalDespesas (0 se nenhuma)
+ *     "cartaoExcedeu": boolean, // (só com `mes`) despesas de cartão passam do total da fatura informado
  *     "saldo":         number,  // totalReceitas - totalDespesas (pode ser negativo)
- *     "totalPago":     number,  // parte do totalDespesas já marcada como PAGA (informativo)
+ *     "totalPago":     number,  // parte do totalDespesas já marcada como PAGA (informativo; a linha
+ *                               // virtual do cartão conta como paga quando a fatura está paga)
  *     "faltaPagar":    number,  // totalDespesas - totalPago (nunca negativo; informativo)
  *     "fixosGerados":  number   // fixos criados automaticamente nesta chamada (0 na maioria)
  *   }
@@ -40,17 +44,22 @@ export async function obterResumo(req, res) {
   // Abrir um mês gera os fixos dele (idempotente; só até o mês atual) ANTES de somar.
   const gerados = mes ? await gerarFixosDoMesTodos(req.userId, mes) : { total: 0 };
 
-  const [totalReceitas, totalDespesas, totalPago] = await Promise.all([
+  // Total de despesas CORRIGIDO pelo cartão (função central — a mesma do Total guardado).
+  const [totalReceitas, despesas, cartao] = await Promise.all([
     somarValor(Receita, req.userId, mes),
-    somarValor(Despesa, req.userId, mes),
-    somarPagas(Despesa, req.userId, mes),
+    totalDespesasCorrigido(req.userId, mes ? { mes } : {}),
+    mes ? cartaoDoMes(req.userId, mes) : null,
   ]);
+  const totalDespesas = despesas.total;
+  const totalPago = despesas.pago;
 
   // O saldo e o total usam TODAS as despesas, pagas ou não. `totalPago`/`faltaPagar` só
   // informam o andamento dos pagamentos.
   res.json({
     totalReceitas,
     totalDespesas,
+    outrasComprasCartao: despesas.naoDetalhado,
+    cartaoExcedeu: Boolean(cartao?.excedeu),
     saldo: totalReceitas - totalDespesas,
     totalPago,
     faltaPagar: Math.max(0, Math.round((totalDespesas - totalPago) * 100) / 100), // arredonda p/ centavos (evita 0,0000001)

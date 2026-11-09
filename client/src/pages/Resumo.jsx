@@ -30,6 +30,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api.js';
+import { brl } from '../lib/format.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
 import { MES_INICIAL, deslocarMes, mensagemFixosGerados, mesFechado, nomeDoMes } from '../lib/mes.js';
 import CategoriasDonut from '../components/CategoriasDonut.jsx';
@@ -80,7 +81,9 @@ export default function Resumo() {
         }
         if (!ativo) return;
         setResumo(r1.data);
-        setDespesas(r2.data.despesas ?? []);
+        // A linha virtual "Outras compras no cartão" (parte da fatura não detalhada, categoria
+        // "Outros") entra na rosca e nas maiores despesas, como no total do Resumo.
+        setDespesas([...(r2.data.despesas ?? []), ...(r2.data.linhaVirtual ? [r2.data.linhaVirtual] : [])]);
         setAnterior(r3 ? r3.data : null);
       } catch (err) {
         if (ativo) setErro(err.response?.data?.message || 'Falha ao carregar o resumo.');
@@ -155,6 +158,14 @@ export default function Resumo() {
             nomeAnterior={nomeAnterior}
             // Pago / falta pagar (informativo; o total acima continua somando TODAS as despesas).
             pagamento={{ pago: resumo.totalPago ?? 0, faltaPagar: resumo.faltaPagar ?? resumo.totalDespesas }}
+            // Total já CORRIGIDO pelo cartão: avisa quanto dele veio da parte não detalhada da fatura.
+            nota={
+              resumo.outrasComprasCartao > 0
+                ? `inclui ${brl(resumo.outrasComprasCartao)} de outras compras no cartão`
+                : resumo.cartaoExcedeu
+                  ? 'despesas de cartão passam do total da fatura informado'
+                  : undefined
+            }
           />
         </div>
       </div>

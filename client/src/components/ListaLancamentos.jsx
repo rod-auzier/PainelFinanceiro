@@ -22,6 +22,7 @@
  *      opcoes?: string[],           // opções do <select> (editor 'select')
  *      editorCustom?: (valor, onChange) => node,  // editor próprio (editor 'custom'; ex.: o
  *                                   // <SeletorCategoria> das Despesas, com bolinhas de cor)
+ *      rotuloCheckbox?: string,     // texto ao lado da caixa no editor 'checkbox' (padrão "Todo mês")
  *      valorEdicao?: (item) => any, // valor inicial do campo ao começar a editar (padrão:
  *                                   // item[chave]; ex.: a categoria de EXIBIÇÃO da despesa)
  *    }>}
@@ -39,6 +40,8 @@
  *      Liga uma CAIXA DE MARCAÇÃO grande (<CaixaCheck>) em cada item — usada pelas Despesas
  *      para "paga". Fica no início do card (mobile) / numa coluna estreita à esquerda (desktop),
  *      fora da edição inline (editar não muda a marcação). `titulo` é o cabeçalho dessa coluna.
+ *  - somenteLeitura {(item) => boolean}       (opcional) true = item CALCULADO (ex.: a linha virtual
+ *      "Outras compras no cartão" das Despesas): sem editar, sem excluir e sem a caixa de marcação.
  *  - apagado        {(item) => boolean}       (opcional) true = item "apagado" (levemente
  *      esmaecido): todos os campos, MENOS o valor (a última coluna), ficam com opacidade reduzida.
  *  - total          {ReactNode}               total já formatado (ex.: <Money>).
@@ -71,7 +74,7 @@ function EditorCampo({ col, valor, onChange }) {
           onChange={(e) => onChange(e.target.checked)}
           className="h-5 w-5 accent-accent"
         />
-        Todo mês
+        {col.rotuloCheckbox ?? 'Todo mês'}
       </label>
     );
   }
@@ -137,6 +140,7 @@ export default function ListaLancamentos({
   onExcluir,
   aoSalvarEdicao,
   marca,
+  somenteLeitura,
   apagado,
   total,
   totalExtra,
@@ -258,7 +262,7 @@ export default function ListaLancamentos({
               ) : (
                 <div className="flex items-start justify-between gap-3">
                   {/* Caixa de marcação grande (44x44) à esquerda do card, quando houver. */}
-                  {marca && (
+                  {marca && !somenteLeitura?.(item) && (
                     <CaixaCheck
                       marcada={marca.marcada(item)}
                       onChange={() => marca.aoAlternar(item)}
@@ -274,8 +278,8 @@ export default function ListaLancamentos({
                     ))}
                   </dl>
 
-                  {/* Ações: editar (lápis) + excluir (✕), 44x44 cada. */}
-                  <div className="flex shrink-0 flex-col gap-1">
+                  {/* Ações: editar (lápis) + excluir (✕), 44x44 cada. Item calculado não tem ações. */}
+                  <div className={`flex shrink-0 flex-col gap-1 ${somenteLeitura?.(item) ? 'hidden' : ''}`}>
                     <button
                       onClick={() => iniciarEdicao(item)}
                       aria-label="Editar"
@@ -359,7 +363,7 @@ export default function ListaLancamentos({
                     {/* Coluna da caixa de marcação (escondida durante a edição inline). */}
                     {marca && (
                       <td className="w-14 p-1 align-middle">
-                        {!editando && (
+                        {!editando && !somenteLeitura?.(item) && (
                           <CaixaCheck
                             marcada={marca.marcada(item)}
                             onChange={() => marca.aoAlternar(item)}
@@ -394,7 +398,7 @@ export default function ListaLancamentos({
                     <td className="whitespace-nowrap p-2 text-right">
                       {editando ? (
                         <div className="flex justify-end gap-2">{botoesEdicao}</div>
-                      ) : (
+                      ) : somenteLeitura?.(item) ? null : (
                         <div className="flex justify-end gap-1">
                           <button
                             onClick={() => iniciarEdicao(item)}

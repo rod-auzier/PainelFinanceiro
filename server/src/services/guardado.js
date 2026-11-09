@@ -4,6 +4,8 @@
  * REGRA DOS MESES FECHADOS
  *   TOTAL GUARDADO = Σ valores das CAIXINHAS do usuário (aba Porquinho; saldo em 01/10/2026)
  *                  + Σ (receitas − despesas) de cada mês FECHADO
+ *   As despesas de cada mês já vêm CORRIGIDAS pelo cartão de crédito (fatura informada − parte já
+ *   detalhada; ver services/cartao.js -> totalDespesasCorrigido), igual ao Resumo.
  *   (As caixinhas substituíram o antigo campo único "saldo inicial guardado"; a transição é feita
  *   em services/caixinhas.js, antes de somar, para o total não mudar.)
  *   Mês fechado = de MES_INICIAL (outubro/2026) até o mês ANTERIOR ao mês atual. O mês
@@ -39,11 +41,11 @@
  * Isolamento: tudo é filtrado por `userId`.
  */
 import { Receita } from '../models/Receita.js';
-import { Despesa } from '../models/Despesa.js';
 import { Meta } from '../models/Meta.js';
 import { garantirMigracaoCaixinhas, somarCaixinhas } from './caixinhas.js';
 import { garantirFixosAteMesAtual } from './fixos.js';
 import { somarMesesFechados, somarValor } from './totais.js';
+import { totalDespesasCorrigido } from './cartao.js';
 import { MES_INICIAL, mesAtual, mesSeguinte, mesesEntre } from '../utils/mes.js';
 
 /** Arredonda para centavos (evita 4999.999999… em somas de ponto flutuante). */
@@ -83,9 +85,11 @@ export async function calcularGuardado(userId, hoje = mesAtual()) {
   const [somaCaixinhas, receitasFechadas, despesasFechadas, receitasMes, despesasMes] = await Promise.all([
     somarCaixinhas(userId),
     somarMesesFechados(Receita, userId, hoje),
-    somarMesesFechados(Despesa, userId, hoje),
+    // Despesas CORRIGIDAS pelo cartão (mesma função do Resumo): meses fechados = de MES_INICIAL até o
+    // mês atual (exclusivo). Sem mês fechado ainda, 0.
+    hoje > MES_INICIAL ? totalDespesasCorrigido(userId, { desde: MES_INICIAL, ate: hoje }).then((d) => d.total) : 0,
     painelComecou ? somarValor(Receita, userId, hoje) : 0,
-    painelComecou ? somarValor(Despesa, userId, hoje) : 0,
+    painelComecou ? totalDespesasCorrigido(userId, { mes: hoje }).then((d) => d.total) : 0,
   ]);
 
   const totalCaixinhas = arredondar(somaCaixinhas);

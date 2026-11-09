@@ -1,5 +1,8 @@
 /**
  * Totais agregados de receitas e despesas (feitos no MongoDB, não em memória).
+ * ATENÇÃO: estas somas são das despesas LANÇADAS. O total de despesas que as telas mostram
+ * (com a correção do cartão de crédito) vem de `totalDespesasCorrigido` em services/cartao.js,
+ * que usa estas funções e soma as "outras compras no cartão".
  * Compartilhado pelo Resumo (controllers/resumo.controller.js) e pelo
  * "Total guardado" das Metas (services/guardado.js).
  */
@@ -12,7 +15,7 @@ import { MES_INICIAL, filtroDesdeInicio, filtroDoMes, limitesDoMes } from '../ut
  * @param {string} userId
  * @param {object} filtroData  ex.: `{ createdAt: { $gte, $lt } }`
  */
-async function somarComFiltro(Model, userId, filtroData) {
+export async function somarComFiltro(Model, userId, filtroData) {
   const [resultado] = await Model.aggregate([
     { $match: { userId: new mongoose.Types.ObjectId(userId), ...filtroData } },
     { $group: { _id: null, total: { $sum: '$valor' } } },

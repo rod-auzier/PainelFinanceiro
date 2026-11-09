@@ -15,6 +15,11 @@
  *                  os totais e o saldo continuam somando TODAS as despesas, pagas ou não. Os fixos
  *                  gerados automaticamente NÃO herdam o status (entram sempre como não pagos) e a
  *                  edição (PUT) não o altera — só PATCH /api/despesas/:id (e o "marcar todas").
+ *  - cartao     : a despesa foi paga no CARTÃO DE CRÉDITO? Padrão `false` (as despesas antigas, sem o
+ *                  campo, valem como "não é cartão"). As despesas de cartão formam o "detalhado" da fatura
+ *                  do mês (ver services/cartao.js): se o usuário informar o total da fatura, só a diferença
+ *                  ainda não lançada é somada ao total — nada conta duas vezes. Os fixos copiados para o
+ *                  mês seguinte mantêm o `cartao` da original.
  *  - createdAt  : data de registro da despesa. Gerada automaticamente pelo
  *                 `timestamps` do Mongoose (que também cria `updatedAt`).
  */
@@ -48,6 +53,11 @@ const despesaSchema = new mongoose.Schema(
       default: false,
     },
     paga: {
+      type: Boolean,
+      default: false,
+    },
+    // Paga no cartão de crédito (ver services/cartao.js). Opcional; padrão "não é cartão".
+    cartao: {
       type: Boolean,
       default: false,
     },

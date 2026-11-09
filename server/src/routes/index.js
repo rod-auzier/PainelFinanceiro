@@ -8,6 +8,7 @@ import metaRoutes from './meta.routes.js';
 import guardadoRoutes from './guardado.routes.js';
 import categoriaRoutes from './categoria.routes.js';
 import caixinhaRoutes from './caixinha.routes.js';
+import faturaRoutes from './fatura.routes.js';
 
 const router = Router();
 
@@ -29,5 +30,7 @@ router.use('/guardado', guardadoRoutes);
 router.use('/categorias', categoriaRoutes);
 // Caixinhas (aba Porquinho): a soma delas entra no Total guardado.
 router.use('/caixinhas', caixinhaRoutes);
+// Faturas do cartão de crédito (total do mês; a parte não detalhada entra no total de despesas).
+router.use('/faturas', faturaRoutes);
 
 export default router;

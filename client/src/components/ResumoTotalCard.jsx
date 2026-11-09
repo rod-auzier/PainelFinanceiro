@@ -16,6 +16,8 @@
  *             linhas discretas ("Pago" e "Falta pagar", esta na cor de destaque) e uma barrinha
  *             fina com a fração já paga. Informativo: o total e o saldo contam TODAS as despesas.
  *             Sem despesas no mês, não aparece.
+ *  - nota     {string | undefined}     texto pequeno logo abaixo do valor (ex.: "inclui R$ 170,00 de
+ *             outras compras no cartão"). Sem nota, nada aparece.
  *
  * Comparação ("▲ 12% vs outubro"): só aparece quando dá para calcular (o mês anterior existe e
  * não foi zero). A COR diz se foi bom ou ruim: para receita, subir é bom (verde) e cair é ruim
@@ -33,7 +35,7 @@ const Seta = ({ d }) => (
 const ICONE_ENTRADA = 'M17 7 7 17M17 17H7V7'; // seta ↙ (dinheiro entrando)
 const ICONE_SAIDA = 'M7 17 17 7M7 7h10v10'; // seta ↗ (dinheiro saindo)
 
-export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior, pagamento }) {
+export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior, pagamento, nota }) {
   const receita = tipo === 'receita';
   const v = anterior == null ? null : variacao(valor, anterior);
   const temPercentual = v && v.percentual !== null;
@@ -62,6 +64,7 @@ export default function ResumoTotalCard({ tipo, valor, anterior, nomeAnterior, p
       </div>
 
       <Money value={valor} tone={receita ? 'positive' : 'negative'} className="mt-2 block text-xl" />
+      {nota && <p className="mt-0.5 text-xs text-muted">{nota}</p>}
 
       {/* Comparação com o mês anterior (quando houver). */}
       {temPercentual && (
