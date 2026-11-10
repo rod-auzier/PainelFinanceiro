@@ -9,7 +9,15 @@
 import mongoose from 'mongoose';
 import { Despesa } from '../models/Despesa.js';
 import { gerarFixosDoMes } from '../services/fixos.js';
-import { cartoesDoMes, garantirCartaoPadrao, linhasVirtuaisCartoes } from '../services/cartao.js';
+import {
+  cartoesDoMes,
+  filtroDespesasDoCartao,
+  filtroFaturasDoCartao,
+  garantirCartaoPadrao,
+  linhasVirtuaisCartoes,
+} from '../services/cartao.js';
+import { Cartao } from '../models/Cartao.js';
+import { FaturaCartao } from '../models/FaturaCartao.js';
 import { lerCartaoId } from './cartao.controller.js';
 import { ajustarFixosExistentes, idsDosSeguintes, propagarEdicaoFixo } from '../services/propagacao.js';
 import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMes, lerMesOpcional } from '../utils/mes.js';
@@ -237,25 +245,76 @@ export async function atualizarPagamento(req, res) {
 }
 
 /**
- * Marca como PAGAS todas as despesas AINDA PENDENTES de um mês ("Marcar todas como pagas").
- * Idempotente: repetir não muda nada. Só toca nas despesas do usuário autenticado.
+ * Marca (ou desmarca) como PAGAS, DE UMA VEZ, as despesas de um mês — todas, ou só as de UM CARTÃO.
+ * É a rota ÚNICA de "pagar em lote": "Marcar todas como pagas" da lista (com ou sem filtro de cartão),
+ * "Marcar fatura como paga" no bloco do cartão e o "Desfazer" do aviso que aparece depois.
+ *
+ * - Só o campo `paga` das despesas do USUÁRIO, do MÊS e (se informado) do CARTÃO é alterado. Um único
+ *   `updateMany`; idempotente (despesas que já estão no valor pedido não contam).
+ * - Com `cartaoId`: usa o mesmo critério de "despesa do cartão" do cálculo (inclui as antigas do cartão
+ *   padrão) e também marca/desmarca a FATURA do cartão no mês (se houver fatura informada) — assim a
+ *   linha calculada "Outras compras no cartão" conta como paga junto, como na regra de Pago / Falta pagar.
+ * - `ids` (opcional) restringe a esses lançamentos — é como o "Desfazer" reverte EXATAMENTE os itens que a
+ *   ação alterou; `faturaPaga` (opcional) devolve a fatura ao estado anterior.
+ * - Mês aberto ou fechado não faz diferença aqui.
  *
  * @route   PATCH /api/despesas/pagas
  * @access  Privado
- * @param   {object} req.body
- * @param   {string} req.body.mes  — "AAAA-MM" (não anterior a MES_INICIAL). Obrigatório.
- * @returns {200} `{ atualizadas: number }` — quantas despesas passaram de pendente para paga.
- * @returns {400} `{ message }` — `mes` ausente, mal formatado ou anterior a MES_INICIAL.
+ * @param   {string}   req.body.mes          "AAAA-MM" (não anterior a MES_INICIAL). Obrigatório.
+ * @param   {boolean}  [req.body.paga]       valor desejado (padrão `true`).
+ * @param   {string}   [req.body.cartaoId]   só as despesas desse cartão (do próprio usuário). Sem ele: todas do mês.
+ * @param   {string[]} [req.body.ids]        (Desfazer) só estes lançamentos.
+ * @param   {boolean}  [req.body.faturaPaga] (Desfazer) valor a gravar na fatura do cartão (padrão: = `paga`).
+ * @returns {200} `{ atualizadas, ids, faturaPagaAntes }` — quantas mudaram, quais (para o Desfazer) e
+ *               como estava a fatura do cartão antes (`null` sem cartão ou sem fatura).
+ * @returns {400} `{ message }` — `mes`/`paga`/`ids`/`faturaPaga` inválidos.
+ * @returns {404} `{ message }` — cartão inexistente ou de outro usuário.
  */
 export async function marcarTodasPagas(req, res) {
   const { mes, erro } = lerMes(req.body?.mes);
   if (erro) return res.status(400).json({ message: erro });
+  const { paga = true, cartaoId, ids, faturaPaga } = req.body ?? {};
+  if (typeof paga !== 'boolean') return res.status(400).json({ message: 'paga deve ser true ou false' });
+  if (faturaPaga !== undefined && typeof faturaPaga !== 'boolean') {
+    return res.status(400).json({ message: 'faturaPaga deve ser true ou false' });
+  }
+  if (ids !== undefined && (!Array.isArray(ids) || !ids.every((id) => mongoose.isValidObjectId(id)))) {
+    return res.status(400).json({ message: 'ids inválidos' });
+  }
 
-  const resultado = await Despesa.updateMany(
-    { userId: req.userId, paga: { $ne: true }, ...filtroDoMes(mes) }, // `$ne: true` pega também as antigas, sem o campo
-    { paga: true },
-  );
-  return res.json({ atualizadas: resultado.modifiedCount });
+  // Escopo: usuário + mês (+ cartão) (+ ids) e só quem ainda NÃO está no valor pedido.
+  let cartao = null;
+  let filtro = { userId: req.userId, ...filtroDoMes(mes) };
+  if (cartaoId) {
+    if (!mongoose.isValidObjectId(cartaoId)) return res.status(400).json({ message: 'cartaoId inválido' });
+    cartao = await Cartao.findOne({ _id: cartaoId, userId: req.userId }).lean();
+    if (!cartao) return res.status(404).json({ message: 'cartão não encontrado' });
+    filtro = { ...filtro, ...filtroDespesasDoCartao(req.userId, cartao) };
+  }
+  if (ids) filtro._id = { $in: ids };
+  // `$ne: true` também pega as antigas sem o campo (= não pagas).
+  filtro.paga = paga ? { $ne: true } : true;
+
+  const alvo = await Despesa.find(filtro).select('_id').lean();
+  const idsAlterados = alvo.map((d) => d._id);
+  let atualizadas = 0;
+  if (idsAlterados.length) {
+    atualizadas = (await Despesa.updateMany({ _id: { $in: idsAlterados }, userId: req.userId }, { $set: { paga } })).modifiedCount;
+  }
+
+  // Fatura do cartão no mês (se informada): acompanha, para a linha calculada contar como paga.
+  let faturaPagaAntes = null;
+  if (cartao) {
+    const fatura = await FaturaCartao.findOne({ ...filtroFaturasDoCartao(req.userId, cartao), mes });
+    if (fatura) {
+      faturaPagaAntes = Boolean(fatura.paga);
+      fatura.paga = faturaPaga ?? paga;
+      fatura.despesasMarcadas = []; // o "desfazer" agora é o do aviso da tela (ids devolvidos aqui)
+      await fatura.save();
+    }
+  }
+
+  return res.json({ atualizadas, ids: idsAlterados.map(String), faturaPagaAntes });
 }
 
 /**

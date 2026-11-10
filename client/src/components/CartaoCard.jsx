@@ -11,19 +11,24 @@
  *  - "Detalhado nas despesas" ............ valor (mono, à direita, com espaço entre texto e valor);
  *  - label "Fatura total do mês" + input (mostra o valor já salvo) + botão dourado "Salvar";
  *  - sem fatura: ajuda "Informe o total da fatura para contar também as compras que você não lançou.";
+ *  - botão "Marcar fatura como paga" (borda fina, texto dourado): marca como PAGAS, de uma vez, todas as
+ *    despesas deste cartão no mês (e a fatura, se informada — a linha calculada conta como paga junto).
+ *    Com tudo já pago vira "Desmarcar fatura"; sem despesas do cartão no mês fica desabilitado. Ao lado do
+ *    nome aparece o selo verde "paga" quando todas as despesas do cartão no mês estão pagas;
  *  - com fatura: "Outras compras no cartão" (o que entrou no total), aviso se o detalhado passa da
- *    fatura, a caixa "Fatura paga" (marca/desmarca também as despesas deste cartão no mês) e o link
- *    "Remover fatura".
+ *    fatura e o link "Remover fatura".
  *
  * Props:
  *  - mes       {string}  "AAAA-MM".
  *  - situacao  {{ cartao: { _id, nome, cor }, fatura: { valor, paga } | null, detalhado, naoDetalhado, excedeu }}
  *  - aoAlterar {() => Promise<void>}  depois de salvar/remover/marcar: a tela recarrega as despesas.
  *  - onEditar / onExcluir {() => void}  ações sobre o cartão (a seção cuida delas).
+ *  - pagamento {{ total, pagas }}  despesas deste cartão no mês e quantas já estão pagas.
+ *  - onPagarFatura {(paga: boolean) => void}  pagar/despagar em lote (a página chama a API e mostra o
+ *              aviso com "Desfazer").
  */
 import { useEffect, useState } from 'react';
 import { api } from '../services/api.js';
-import CaixaCheck from './CaixaCheck.jsx';
 import CategoriaPonto from './CategoriaPonto.jsx';
 import Money from './Money.jsx';
 
@@ -57,7 +62,9 @@ const IconeLixeira = () => (
   </svg>
 );
 
-export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExcluir }) {
+export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExcluir, pagamento = { total: 0, pagas: 0 }, onPagarFatura }) {
+  // Todas as despesas do cartão no mês já pagas? (sem despesas, não conta como paga)
+  const tudoPago = pagamento.total > 0 && pagamento.pagas === pagamento.total;
   const { cartao, fatura } = situacao;
   const [campo, setCampo] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -98,7 +105,15 @@ export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExclu
       {/* Nome + editar/excluir o cartão. */}
       <div className="flex items-center gap-2">
         <CategoriaPonto cor={cartao.cor} grande />
-        <h3 className="min-w-0 flex-1 break-words text-sm font-medium">{cartao.nome}</h3>
+        <h3 className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 break-words text-sm font-medium">
+          {cartao.nome}
+          {/* Selo discreto: todas as despesas deste cartão no mês estão pagas. */}
+          {tudoPago && (
+            <span className="rounded-full border border-[color-mix(in_srgb,var(--color-positive)_45%,transparent)] px-1.5 py-0.5 text-[10px] font-normal leading-none text-positive">
+              paga
+            </span>
+          )}
+        </h3>
         <button type="button" onClick={onEditar} aria-label={`Editar cartão ${cartao.nome}`} className="flex h-8 w-8 items-center justify-center rounded text-muted hover:text-accent">
           <IconeLapis />
         </button>
@@ -135,6 +150,17 @@ export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExclu
         </label>
       </form>
 
+      {/* Pagar a fatura em lote: todas as despesas deste cartão no mês (uma chamada só). */}
+      <button
+        type="button"
+        disabled={pagamento.total === 0}
+        onClick={() => onPagarFatura?.(!tudoPago)}
+        title={pagamento.total === 0 ? 'Nenhuma despesa deste cartão neste mês' : undefined}
+        className="min-h-[40px] w-full rounded border border-border px-3 text-sm text-accent hover:border-accent disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
+      >
+        {tudoPago ? 'Desmarcar fatura' : 'Marcar fatura como paga'}
+      </button>
+
       {fatura ? (
         <>
           {/* O que ENTROU no total de despesas como linha calculada. */}
@@ -147,17 +173,7 @@ export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExclu
               As despesas deste cartão passam do total da fatura informado — vale o que foi lançado.
             </p>
           )}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center">
-              <CaixaCheck
-                marcada={Boolean(fatura.paga)}
-                onChange={(paga) =>
-                  !ocupado && executar(() => api.patch(`/faturas/${mes}/${cartao._id}/paga`, { paga }), 'Não foi possível atualizar a fatura.')
-                }
-                rotulo={fatura.paga ? `Desmarcar fatura do ${cartao.nome} como paga` : `Marcar fatura do ${cartao.nome} como paga`}
-              />
-              <span className="text-xs">Fatura paga</span>
-            </div>
+          <div className="flex justify-end">
             <button
               type="button"
               disabled={ocupado}

@@ -465,7 +465,10 @@ Novembro de 2026 · em andamento
 - **Lista** (card único):
   - **barra do topo**: filtros por cartão (chip *Todas* + um chip por cartão, com bolinha), "**N de M
     pagas**", o botão **Marcar todas como pagas** (com confirmação) e o link discreto **Gerenciar
-    categorias** (abre a mesma tela de gerenciar categorias numa janela);
+    categorias** (abre a mesma tela de gerenciar categorias numa janela). Com um chip de **cartão**
+    selecionado, o contador e o botão seguem o filtro: "**5 de 6 pagas**", "**Marcar todas do Neon como
+    pagas**" (só as despesas daquele cartão — a mesma ação do bloco do cartão); quando o escopo já está
+    todo pago, o botão vira "**Desmarcar todas…**";
   - cada linha tem **3 áreas**: [caixa *Paga*] [nome] [valor]. O nome mostra, na 1ª linha, a descrição,
     o **↻** dourado quando é *Repete todo mês* e a **pílula do cartão** (bolinha + nome); na 2ª, pequena e
     cinza, a **categoria** com a bolinha da cor dela. Valor em vermelho, mono, à direita;
@@ -480,8 +483,8 @@ Novembro de 2026 · em andamento
   - **PAGAMENTO DO MÊS**: total do mês em vermelho, barra verde com a fração paga, "Pago R$ x" (verde) e
     "Falta R$ y" (dourado). Sempre o mês inteiro (sem o filtro de cartão);
   - **CARTÕES DE CRÉDITO · N de 5** com *+ Novo*: um bloco por cartão — nome, editar/excluir,
-    "Detalhado nas despesas", **Fatura total do mês** (mostra o valor salvo) + *Salvar*, e "Outras compras
-    no cartão", *Fatura paga* e *Remover fatura* quando há fatura (ver
+    "Detalhado nas despesas", **Fatura total do mês** (mostra o valor salvo) + *Salvar*, o botão **Marcar
+    fatura como paga** (ver abaixo), e "Outras compras no cartão" e *Remover fatura* quando há fatura (ver
     [Cartões de crédito](#cartões-de-crédito-vários-cartões-sem-contar-nada-duas-vezes)).
 - **Categoria**: as **categorias do usuário**, com a bolinha de cor (ver
   [Categorias personalizadas](#categorias-personalizadas)). **Valor** obrigatório, ≥ 0.
@@ -494,8 +497,18 @@ Novembro de 2026 · em andamento
   despesas antigas valem como não pagas). **É só informativo**: total e saldo continuam somando
   *todas* as despesas. Os **fixos gerados automaticamente não herdam o status** (entram sempre
   como não pagos) e **editar não altera** o status.
-- **Marcar todas como pagas** (barra do topo da lista): pede confirmação na própria tela e age só nas
-  pendentes do mês selecionado (`PATCH /api/despesas/pagas`).
+- **Marcar todas como pagas** (barra do topo da lista): pede confirmação na própria tela e age nas
+  despesas do mês selecionado — ou só nas do cartão do filtro ativo (`PATCH /api/despesas/pagas`).
+- **Marcar fatura como paga** (bloco de cada cartão, botão de borda fina e texto dourado): marca como
+  **pagas, de uma vez** (uma chamada só), **todas as despesas daquele cartão no mês exibido** — as sem
+  cartão e as de outros cartões ficam como estavam. Se o cartão tem fatura informada, ela também fica paga,
+  então a linha calculada "Outras compras no cartão (nome)" conta como paga: o total do cartão,
+  `max(fatura, detalhado)`, passa para **Pago** no "Pagamento do mês". Com tudo já pago o botão vira
+  **Desmarcar fatura** (volta todas a pendentes); sem despesas do cartão no mês fica desabilitado. Quando
+  todas as despesas do cartão estão pagas, aparece o selo verde **paga** ao lado do nome.
+- Depois de pagar/despagar em lote, a tela atualiza no lugar (sem recarregar) e mostra um aviso discreto —
+  "6 despesas do Neon marcadas como pagas" — com o link **Desfazer** por ~6 segundos, que reverte
+  **exatamente** os itens alterados (e a fatura). Mês aberto ou fechado não muda nada aqui.
 - No **Resumo**, o card *Total de despesas* mostra **Pago** e **Falta pagar** (esta em amarelo
   `#D4A24C`) com uma barrinha fina do que já foi pago. Vale para qualquer mês navegável.
 
@@ -518,9 +531,11 @@ PicPay, Nubank — até **5**), cada um com a sua fatura.
 3. No card de cada cartão: **Detalhado nas despesas** (soma das despesas daquele cartão no mês), o campo
    **Fatura total do mês (R$)** com *Salvar* (*Remover* apaga só a fatura informada) e, em destaque,
    **Outras compras no cartão** — a diferença, que foi **somada ao total de despesas**.
-4. **Fatura paga** (por cartão): marca a fatura e também as despesas **daquele cartão** no mês ainda
-   pendentes; a linha calculada dele passa a contar como paga em "Pago / Falta pagar". **Desmarcar desfaz
-   só o que essa ação marcou**.
+4. **Marcar fatura como paga** (por cartão): marca a fatura e **todas** as despesas **daquele cartão** no
+   mês como pagas; a linha calculada dele passa a contar como paga em "Pago / Falta pagar". **Desmarcar
+   fatura** volta todas a pendentes; o aviso **Desfazer** (~6 s) reverte exatamente o que a ação mudou.
+   (A antiga caixa "Fatura paga" deu lugar a esse botão; a rota `PATCH /api/faturas/:mes/:cartaoId/paga`
+   continua existindo.)
 - **Excluir um cartão** pede confirmação dizendo **quantas despesas** serão afetadas: elas **viram
   despesas comuns** (nunca são apagadas) e as **faturas** daquele cartão são removidas.
 
@@ -996,7 +1011,7 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId?, mes? }` (`cartaoId`: cartão do usuário ou `null`) | `201 { despesa }` · `400` |
 | PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId? }` | `200 { despesa, propagadas }` (fixa: descrição/categoria/cartão/recorrente vão para os meses seguintes; valor e paga não) · `400` · `404` (não altera `paga`) |
 | PATCH  | `/api/despesas/:id`   | sim  | `{ paga: boolean }`                                | `200 { despesa }` · `400` · `404`                    |
-| PATCH  | `/api/despesas/pagas` | sim  | `{ mes: "AAAA-MM" }`                               | `200 { atualizadas }` (marca as pendentes do mês) · `400` |
+| PATCH  | `/api/despesas/pagas` | sim  | `{ mes, paga?, cartaoId?, ids?, faturaPaga? }`     | `200 { atualizadas, ids, faturaPagaAntes }` — pagar/despagar EM LOTE (um `updateMany`): todas as despesas do mês ou só as do cartão (e a fatura dele); `ids`/`faturaPaga` servem ao "Desfazer". Idempotente · `400` · `404` (cartão de outro usuário) |
 | DELETE | `/api/despesas/:id`   | sim  | query `?escopo=seguintes` (opcional, só fixa)      | `200 { removidas }` (padrão: só esta; `seguintes`: também as cópias fixas dos meses seguintes) · `400` · `404` |
 | GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, outrasComprasCartao, cartaoExcedeu, saldo, totalPago, faltaPagar, fixosGerados }` — `totalDespesas` já CORRIGIDO pelos cartões (inclui `outrasComprasCartao`, a soma das partes não detalhadas de todas as faturas); `totalPago`/`faltaPagar` são só informativos (do mês; sem `mes`, de out/2026 em diante) |
 | GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado }` (mais recentes primeiro; já sincronizadas; `guardado` = o mesmo objeto de `GET /api/guardado`, numa chamada só) |

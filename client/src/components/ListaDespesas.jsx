@@ -24,7 +24,10 @@
  *  - total         {number} soma das linhas mostradas.
  *  - carregando / erro
  *  - filtro        {{ cartoes, valor, onChange }}  chips por cartão ('' = Todas).
- *  - pagas         {{ qtdPagas, qtdTotal, qtdPendentes, confirmando, setConfirmando, onMarcarTodas, erro }}
+ *  - pagas         {{ qtdPagas, qtdTotal, qtdPendentes, todasPagas, nomeCartao, confirmando, setConfirmando,
+ *                     onMarcarTodas, erro }} — tudo já no ESCOPO do filtro (mês todo ou um cartão): o
+ *                     botão diz "Marcar todas [do Neon] como pagas" ou, se o escopo já está todo pago,
+ *                     "Desmarcar todas [do Neon]".
  *  - cartaoDe      {(despesa) => cartao | null}   cartão de exibição de uma linha.
  *  - resolverCategoria {(nome) => { nome, cor }}
  *  - onAlternarPaga {(despesa) => void} · onExcluir {(id) => void} · aoSalvarEdicao {(id, rascunho) => Promise}
@@ -179,13 +182,16 @@ export default function ListaDespesas({
                 <span className="num font-semibold text-fg">{pagas.qtdTotal}</span> pagas
               </p>
             )}
-            {pagas.qtdPendentes > 0 && !pagas.confirmando && (
+            {/* Pagar em lote, no escopo do filtro (mês todo ou o cartão selecionado). */}
+            {pagas.qtdTotal > 0 && !pagas.confirmando && (
               <button
                 type="button"
                 onClick={() => pagas.setConfirmando(true)}
-                className="min-h-[36px] rounded border border-border px-2.5 text-xs text-fg hover:border-accent hover:text-accent"
+                className="min-h-[36px] rounded border border-border px-2.5 text-xs text-accent hover:border-accent"
               >
-                Marcar todas como pagas
+                {pagas.todasPagas
+                  ? `Desmarcar todas${pagas.nomeCartao ? ` do ${pagas.nomeCartao}` : ''}`
+                  : `Marcar todas${pagas.nomeCartao ? ` do ${pagas.nomeCartao}` : ''} como pagas`}
               </button>
             )}
             <button type="button" onClick={onGerenciarCategorias} className="min-h-[36px] text-xs text-muted underline-offset-2 hover:text-accent hover:underline">
@@ -198,7 +204,18 @@ export default function ListaDespesas({
         {pagas.confirmando && (
           <div role="alert" className="flex flex-wrap items-center gap-2 rounded border border-border bg-bg p-2 text-sm">
             <span className="flex-1 basis-full sm:basis-auto">
-              Marcar as {pagas.qtdPendentes} {pagas.qtdPendentes === 1 ? 'despesa pendente' : 'despesas pendentes'} deste mês como pagas?
+              {/* Pergunta no singular ou no plural, no escopo do filtro. */}
+              {(() => {
+                const doCartao = pagas.nomeCartao ? ` do ${pagas.nomeCartao}` : '';
+                if (pagas.todasPagas) {
+                  return pagas.qtdTotal === 1
+                    ? `Desmarcar a despesa${doCartao} deste mês (volta a pendente)?`
+                    : `Desmarcar as ${pagas.qtdTotal} despesas${doCartao} deste mês (voltam a pendentes)?`;
+                }
+                return pagas.qtdPendentes === 1
+                  ? `Marcar a despesa pendente${doCartao} deste mês como paga?`
+                  : `Marcar as ${pagas.qtdPendentes} despesas pendentes${doCartao} deste mês como pagas?`;
+              })()}
             </span>
             <button type="button" onClick={pagas.onMarcarTodas} className="min-h-[40px] rounded bg-accent px-3 text-sm font-medium text-bg hover:opacity-90">
               Confirmar

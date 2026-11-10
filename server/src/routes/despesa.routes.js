@@ -5,7 +5,7 @@
  *   GET    /api/despesas       -> listarDespesas  (abrir um mês gera os fixos automaticamente)
  *   POST   /api/despesas       -> criarDespesa
  *   PUT    /api/despesas/:id   -> atualizarDespesa  (não altera o status `paga`)
- *   PATCH  /api/despesas/pagas -> marcarTodasPagas  ("Marcar todas como pagas" de um mês)
+ *   PATCH  /api/despesas/pagas -> marcarTodasPagas  (pagar/despagar em lote: mês todo ou um cartão; Desfazer)
  *   PATCH  /api/despesas/:id   -> atualizarPagamento (marca/desmarca UMA despesa como paga)
  *   DELETE /api/despesas/:id   -> removerDespesa
  */

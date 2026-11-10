@@ -8,6 +8,8 @@
  *  - situacoes  {Array}   `cartoes` de GET /api/despesas?mes (situação de cada cartão no mês).
  *  - cartoes    {object}  retorno de useCartoes() (lista, limite, criar/atualizar/remover).
  *  - aoAlterar  {() => Promise<void>}  recarrega as despesas (linhas virtuais, totais, "paga").
+ *  - pagamentoPorCartao {Record<id, { total, pagas }>}  quantas despesas cada cartão tem no mês e quantas pagas.
+ *  - onPagarFatura {(cartao, paga) => void}  "Marcar fatura como paga" / "Desmarcar fatura" (pagar em lote).
  *
  * - EDITAR um cartão: o card vira o mini-formulário (nome + cor).
  * - EXCLUIR: confirmação no próprio card dizendo QUANTAS despesas viram despesas comuns (nunca são
@@ -24,7 +26,7 @@ import FormCategoria from './FormCategoria.jsx';
 
 const qtdTexto = (n) => `${n} ${n === 1 ? 'despesa' : 'despesas'}`;
 
-export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
+export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar, pagamentoPorCartao = {}, onPagarFatura }) {
   const { cartoes: lista, limite, criar, atualizar, remover } = cartoes;
   const [editandoId, setEditandoId] = useState(null);
   const [excluindoId, setExcluindoId] = useState(null);
@@ -190,6 +192,8 @@ export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
                 mes={mes}
                 situacao={s}
                 aoAlterar={aoAlterar}
+                pagamento={pagamentoPorCartao[id] ?? { total: 0, pagas: 0 }}
+                onPagarFatura={(paga) => onPagarFatura?.(s.cartao, paga)}
                 onEditar={() => focar({ editar: id })}
                 onExcluir={() => focar({ excluir: id })}
               />

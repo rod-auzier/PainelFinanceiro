@@ -28,13 +28,18 @@
  *    Depois de adicionar, os campos limpam e a faixa continua aberta para lançar várias seguidas;
  *  - editar na própria linha (PUT; fixo propaga para os meses seguintes no servidor, com aviso
  *    "Aplicado também a N meses seguintes"); excluir (DELETE; fixo pergunta "só este mês / seguintes");
- *  - marcar como paga (otimista, PATCH) e "Marcar todas como pagas" (com confirmação);
+ *  - marcar como paga (otimista, PATCH) e PAGAR EM LOTE (PATCH /api/despesas/pagas, uma chamada só):
+ *    "Marcar todas como pagas" na barra da lista — respeita o FILTRO de cartão ("Marcar todas do Neon
+ *    como pagas"; vira "Desmarcar…" quando o escopo já está todo pago; o contador "N de M pagas" também
+ *    segue o filtro) — e "Marcar fatura como paga" no bloco de cada cartão. Depois de pagar em lote, um
+ *    aviso "6 despesas do Neon marcadas como pagas · Desfazer" fica ~6 s; o Desfazer reverte exatamente
+ *    os itens alterados (e a fatura do cartão). A tela atualiza no lugar, sem recarregar;
  *  - filtro rápido por cartão; total das linhas mostradas no rodapé da lista;
  *  - "Pagamento do mês" (total, pago e falta do mês) e os cartões (fatura do mês, fatura paga) no painel;
  *  - "Gerenciar categorias" abre a mesma tela de gerenciar categorias numa janela.
  * Inputs em 16px (sem zoom no iOS); botões com área de toque confortável.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
@@ -56,6 +61,7 @@ import CartoesSecao from '../components/CartoesSecao.jsx';
 import SeletorCartao from '../components/SeletorCartao.jsx';
 import ListaDespesas from '../components/ListaDespesas.jsx';
 import PagamentoMesCard from '../components/PagamentoMesCard.jsx';
+import AvisoDesfazer from '../components/AvisoDesfazer.jsx';
 import { useCartoes } from '../hooks/useCartoes.js';
 
 const FORM_VAZIO = { descricao: '', categoria: NOME_OUTROS, valor: '', recorrente: false, cartaoId: '' }; // '' = sem cartão
@@ -121,8 +127,29 @@ export default function Despesas() {
     [itensExibidos],
   );
   // Andamento dos pagamentos do mês (só informativo; não altera o total).
-  const qtdPagas = despesas.filter((d) => d.paga).length;
-  const qtdPendentes = despesas.length - qtdPagas;
+  // ESCOPO do "pagar em lote" da barra da lista: todas as despesas do mês ou, com um chip de cartão
+  // selecionado, só as daquele cartão. O contador "N de M pagas" e o botão seguem esse escopo.
+  const cartaoDoFiltro = filtroCartao ? cartoes.cartoes.find((c) => String(c._id) === filtroCartao) ?? null : null;
+  const escopo = cartaoDoFiltro ? despesas.filter((d) => String(cartaoDaDespesa(d)?._id) === filtroCartao) : despesas;
+  const qtdPagas = escopo.filter((d) => d.paga).length;
+  const qtdPendentes = escopo.length - qtdPagas;
+  const escopoTodoPago = escopo.length > 0 && qtdPendentes === 0; // botão vira "Desmarcar…"
+
+  // Andamento do pagamento POR CARTÃO (para o botão "Marcar fatura como paga" e o selo "paga").
+  const pagamentoPorCartao = useMemo(() => {
+    const mapa = {};
+    for (const d of despesas) {
+      const id = cartaoDaDespesa(d)?._id;
+      if (!id) continue;
+      mapa[id] ??= { total: 0, pagas: 0 };
+      mapa[id].total += 1;
+      if (d.paga) mapa[id].pagas += 1;
+    }
+    return mapa;
+  }, [despesas, cartaoDaDespesa]);
+
+  const [avisoLote, setAvisoLote] = useState(null); // { mensagem, desfazer } do último "pagar em lote"
+  const fecharAvisoLote = useCallback(() => setAvisoLote(null), []);
   // Soma das despesas pagas (só para os indicadores "Pago / Falta pagar" da linha de total).
   // (Uma linha calculada conta como paga quando a fatura do cartão dela está paga.)
   const totalPago = useMemo(
@@ -163,16 +190,55 @@ export default function Despesas() {
    * "Marcar todas como pagas" (já confirmado): marca na hora todas as pendentes do mês e chama
    * PATCH /api/despesas/pagas. Se falhar, recarrega a lista para voltar ao estado real.
    */
-  async function marcarTodasPagas() {
+  /**
+   * Aplica NA TELA (sem recarregar) o resultado de um "pagar em lote": as despesas `ids` ficam com
+   * `paga`; se o lote foi de um cartão com fatura informada, a fatura e a linha calculada dele também.
+   */
+  function aplicarLote({ ids, paga, cartaoId, faturaPaga }) {
+    const alterados = new Set(ids);
+    setDespesas((lista) => lista.map((d) => (alterados.has(String(d._id)) ? { ...d, paga } : d)));
+    if (cartaoId && faturaPaga !== null && faturaPaga !== undefined) {
+      setLinhasVirtuais((linhas) => linhas.map((l) => (String(l.cartaoId) === String(cartaoId) ? { ...l, paga: faturaPaga } : l)));
+      setSituacoes((lista) =>
+        lista.map((s) => (String(s.cartao._id) === String(cartaoId) && s.fatura ? { ...s, fatura: { ...s.fatura, paga: faturaPaga } } : s)),
+      );
+    }
+  }
+
+  /**
+   * PAGAR EM LOTE (uma chamada só): todas as despesas do mês, ou só as de `cartao`, ficam com `paga`.
+   * Depois mostra o aviso com "Desfazer", que reverte exatamente os itens alterados (e a fatura).
+   */
+  async function pagarEmLote({ cartao = null, paga }) {
     setConfirmandoTodas(false);
     setErroPaga('');
-    setDespesas((lista) => lista.map((d) => ({ ...d, paga: true })));
     try {
-      await api.patch('/despesas/pagas', { mes });
-    } catch {
-      setErroPaga('Não foi possível marcar todas como pagas. Tente de novo.');
+      const { data } = await api.patch('/despesas/pagas', { mes, paga, ...(cartao ? { cartaoId: cartao._id } : {}) });
+      const fatura = cartao && data.faturaPagaAntes !== null ? paga : null; // estado novo da fatura (se houver)
+      aplicarLote({ ids: data.ids, paga, cartaoId: cartao?._id, faturaPaga: fatura });
+
+      const n = data.atualizadas;
+      const doCartao = cartao ? ` do ${cartao.nome}` : '';
+      const texto = n === 0 ? `Nenhuma despesa${doCartao} para ${paga ? 'marcar' : 'desmarcar'}` : `${n} ${n === 1 ? 'despesa' : 'despesas'}${doCartao} ${paga ? (n === 1 ? 'marcada como paga' : 'marcadas como pagas') : n === 1 ? 'desmarcada' : 'desmarcadas'}`;
+      setAvisoLote({
+        mensagem: cartao && data.faturaPagaAntes !== null ? `${texto} (fatura ${paga ? 'paga' : 'em aberto'}).` : `${texto}.`,
+        // Desfazer: só os ids alterados voltam ao valor anterior; a fatura volta ao estado anterior.
+        desfazer: async () => {
+          const corpo = { mes, paga: !paga, ids: data.ids, ...(cartao ? { cartaoId: cartao._id } : {}) };
+          if (cartao && data.faturaPagaAntes !== null) corpo.faturaPaga = data.faturaPagaAntes;
+          await api.patch('/despesas/pagas', corpo);
+          aplicarLote({ ids: data.ids, paga: !paga, cartaoId: cartao?._id, faturaPaga: cartao ? data.faturaPagaAntes : null });
+        },
+      });
+    } catch (err) {
+      setErroPaga(err.response?.data?.message || 'Não foi possível atualizar os pagamentos. Tente de novo.');
       recarregar({ silencioso: true });
     }
+  }
+
+  /** Botão da barra da lista (já confirmado): marca/desmarca o ESCOPO (filtro de cartão ou o mês todo). */
+  function marcarTodasPagas() {
+    pagarEmLote({ cartao: cartaoDoFiltro, paga: !escopoTodoPago });
   }
 
   async function adicionar(e) {
@@ -346,7 +412,14 @@ export default function Despesas() {
           <>
             <PagamentoMesCard total={totalMes} pago={pagoMes} />
             {!carregando && !erro && (
-              <CartoesSecao mes={mes} situacoes={situacoes} cartoes={cartoes} aoAlterar={() => recarregar({ silencioso: true })} />
+              <CartoesSecao
+                mes={mes}
+                situacoes={situacoes}
+                cartoes={cartoes}
+                aoAlterar={() => recarregar({ silencioso: true })}
+                pagamentoPorCartao={pagamentoPorCartao}
+                onPagarFatura={(cartao, paga) => pagarEmLote({ cartao, paga })}
+              />
             )}
           </>
         }
@@ -359,8 +432,10 @@ export default function Despesas() {
             filtro={{ cartoes: cartoes.cartoes, valor: filtroCartao, onChange: setFiltroCartao }}
             pagas={{
               qtdPagas,
-              qtdTotal: despesas.length,
+              qtdTotal: escopo.length,
               qtdPendentes,
+              todasPagas: escopoTodoPago,
+              nomeCartao: cartaoDoFiltro?.nome ?? null,
               confirmando: confirmandoTodas,
               setConfirmando: setConfirmandoTodas,
               onMarcarTodas: marcarTodasPagas,
@@ -376,6 +451,11 @@ export default function Despesas() {
           />
         }
       />
+
+      {/* Aviso temporário do "pagar em lote", com Desfazer (~6 s). */}
+      {avisoLote && (
+        <AvisoDesfazer mensagem={avisoLote.mensagem} onDesfazer={avisoLote.desfazer} onFechar={fecharAvisoLote} />
+      )}
 
       {/* Pergunta ao excluir um FIXO: só este mês (padrão) ou também os meses seguintes. */}
       {excluindoFixo && (
