@@ -96,7 +96,9 @@ Finanças/
 │       │   ├── MenuUsuario.jsx              # menu do avatar no topo do celular (Perfil / Sair)
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
 │       │   ├── IconesNav.jsx                # ícones de linha (SVG inline) do menu
-│       │   ├── ListaLancamentos.jsx         # Receitas: tabela (>=md) / cards (<md) + edição inline
+│       │   ├── PaginaLancamentos.jsx        # layout COMPARTILHADO de Despesas/Receitas: cabeçalho, faixa do form, corpo, card, linha, ações
+│       │   ├── ListaReceitas.jsx            # Receitas: card da lista (2 áreas por linha, edição, total)
+│       │   ├── ReceitasMesCard.jsx          # Receitas (painel lateral): total do mês + fixas / avulsas
 │       │   ├── GuardadoCard.jsx             # Porquinho: card "Total guardado" (= soma das caixinhas) + média e mês em andamento
 │       │   ├── BarraCaixinhas.jsx           # Porquinho: barra empilhada + legenda (nome e %)
 │       │   ├── CaixinhaItem.jsx             # Porquinho: caixinha (cor, nome, valor, editar, excluir com confirmação)
@@ -332,8 +334,8 @@ estão comentados no código:
 | Elemento | `< md` (mobile) | `>= md` (desktop) |
 |---|---|---|
 | Navegação ([Layout.jsx](client/src/components/Layout.jsx)) | **bottom nav fixa** (5 itens, ícone acima do rótulo, ativo em amarelo) + barra fina no topo com o avatar (menu: Perfil e Sair) | **sidebar** lateral fixa (14rem): marca (logo + "Painel Financeiro" / "Controle pessoal"), rótulo "MENU", itens com ícone (ativo: fundo, borda, amarelo e barrinha de 3px na borda esquerda) e cartão do usuário (avatar com a inicial, nome, "Sair") no rodapé |
-| Listas de Receitas/Despesas ([ListaLancamentos.jsx](client/src/components/ListaLancamentos.jsx)) | **cards empilhados** (label + valor em coluna) | **tabela** com cabeçalho, linhas hairline e rodapé de total |
-| Formulários (Receita/Despesa) | **1 coluna** | **2 colunas** (a partir de `sm`) |
+| Listas de Receitas/Despesas ([ListaReceitas.jsx](client/src/components/ListaReceitas.jsx), [ListaDespesas.jsx](client/src/components/ListaDespesas.jsx)) | **coluna única**: painel lateral em cima da lista; editar/excluir sempre visíveis | **lista + painel lateral** lado a lado (a partir de `lg`); editar/excluir no hover da linha |
+| Formulários (faixa "+ Nova …") | **campos empilhados** | **2 colunas** (a partir de `sm`) → **uma linha** (a partir de `xl`) |
 | Saldo Final (Resumo) | 32px | 36px (`sm`) → 48px (`md`) |
 
 Acessibilidade de toque: inputs em `text-base` (**16px** — evita o zoom
@@ -387,21 +389,44 @@ Mesmo formulário, para quem já tem conta. Credenciais inválidas mostram a
 mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 
 ### Receitas (`/receitas`)
-- **Largura**: a página usa o mesmo contêiner centralizado de Despesas (`.container-pagina`, até 1120px).
-- **Formulário**: `Fonte` (obrigatório), `Descrição` (opcional) e `Valor`
-  (obrigatório, ≥ 0). *Adicionar receita* salva e a lista recarrega.
-- **Seletor de mês** (botão do mês ▾ e *Hoje* — ver [Seletor de mês](#seletor-de-mês)) no topo: a lista
-  e o total mostram só o mês escolhido; novas receitas são lançadas nesse mês. Nada antes de
-  **outubro/2026** (ver [Início do painel](#início-do-painel-e-fixos-automáticos)).
-- **Repete todo mês** (checkbox no formulário): marca a receita como **fixa**
-  (aparece como "↻ Todo mês" na lista).
-- **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as
-  receitas fixas do mês anterior (fonte, descrição e valor) e a tela mostra um
-  aviso discreto, ex.: "↻ 2 fixos adicionados automaticamente".
-- **Lista**: tabela no desktop, cards no mobile; total do mês ao fim.
-- **Editar inline** (lápis): os campos da linha viram inputs ali mesmo, com
-  *Salvar* / *Cancelar* (PUT `/api/receitas/:id`) — é por aqui que se ajusta o
-  valor de uma fixa gerada; dá para (des)marcar "Todo mês". **✕** exclui.
+
+**Organização da tela** — a mesma estrutura de Despesas, com as **mesmas peças** de layout
+(`components/PaginaLancamentos.jsx`); só a aparência mudou, as regras não:
+
+```
+Receitas                                   [Novembro de 2026 ▾]  Hoje   [+ Nova receita]
+Novembro de 2026 · em andamento
+[faixa "+ Nova receita" — recolhida; abre logo abaixo do cabeçalho]
+┌ Lista (1fr, ~760px) ────────────────────────┐  ┌ Painel (340px) ──────────┐
+│ Salário ↻                       R$ 4.255,00  │  │ RECEITAS DO MÊS          │
+│ Trabalho                                     │  │ R$ 4.855,00              │
+│ Freela                            R$ 600,00  │  │ Fixas (repetem todo mês) │
+│                        Total    R$ 4.855,00  │  │ Avulsas (só este mês)    │
+└──────────────────────────────────────────────┘  └──────────────────────────┘
+```
+
+- **Contêiner** `.container-pagina` (até 1120px, centralizado — o mesmo de Despesas). **Cabeçalho**:
+  "Receitas" e o mês com a situação ("· em andamento" / "· fechado" / "· futuro"); à direita o seletor de
+  mês (botão do mês ▾ e *Hoje*, sem setas — ver [Seletor de mês](#seletor-de-mês); nada antes de
+  outubro/2026) e o botão dourado **+ Nova receita**.
+- **+ Nova receita** abre uma faixa (borda dourada sutil) com **Fonte | Valor | Descrição (opcional) |
+  Repete todo mês | Adicionar**. Depois de adicionar, limpa e **continua aberta**; **Esc** ou ✕ fecha.
+  Mesma validação de antes (fonte obrigatória, valor ≥ 0). A receita é lançada no mês escolhido.
+- **Lista** (card): cada linha tem **2 áreas** — [nome] [valor]. Na 1ª linha, a **fonte** e o **↻**
+  dourado quando é *Repete todo mês*; na 2ª, pequena e cinza, a **descrição** (sem descrição, nada). Valor
+  em **verde**, mono, numa coluna estreita perto do nome. **Editar** (lápis) e **excluir** (✕) aparecem no
+  hover da linha (sempre visíveis no celular). Sem cabeçalhos de coluna. Rodapé: **Total** em verde.
+  Mesma ordem de antes (mais recentes primeiro).
+- **Editar** troca a linha pelos campos (Fonte, Valor, Descrição, Repete todo mês) — `PUT /api/receitas/:id`.
+  Uma receita **fixa** propaga fonte, descrição e "Repete todo mês" aos meses seguintes (o valor não),
+  com o aviso "Aplicado também a N meses seguintes". **Excluir** uma fixa pergunta "só este mês / este e
+  os meses seguintes".
+- **Painel lateral — RECEITAS DO MÊS**: o total em verde e a divisão **Fixas (repetem todo mês)** /
+  **Avulsas (só este mês)**, somadas a partir do campo `recorrente` que já existe (nada novo no banco).
+- **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as receitas fixas do mês
+  anterior (fonte, descrição e valor) e a tela avisa quantas foram adicionadas.
+- **Responsivo**: a partir de 1024px (`lg`), lista e painel lado a lado; abaixo disso, coluna única com o
+  painel em cima da lista e a faixa do formulário com os campos empilhados.
 
 ### Despesas (`/despesas`)
 

@@ -38,18 +38,8 @@ import Money from './Money.jsx';
 import SeletorCartao from './SeletorCartao.jsx';
 import SeletorCategoria from './SeletorCategoria.jsx';
 import { IconeCartao } from './CartaoCard.jsx';
-
-const CAMPO =
-  'w-full min-h-[44px] rounded border border-border bg-bg px-3 py-2 text-base text-fg ' +
-  'placeholder:text-muted focus:border-accent focus:outline-none';
-
-/** Ícone de lápis (editar). */
-const IconeLapis = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M12 20h9" />
-    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-  </svg>
-);
+// Peças de layout compartilhadas com a lista de Receitas (card, linha, ações, estilos de edição).
+import { AcoesLinha, CAMPO_EDICAO as CAMPO, CardLista, CLASSE_EDICAO, CLASSE_LINHA } from './PaginaLancamentos.jsx';
 
 /** Pílula pequena (cartão, "calculada"). */
 function Pilula({ children }) {
@@ -86,7 +76,7 @@ function EdicaoDespesa({ despesa, cartaoInicial, cartoesApi, aoSalvar, aoCancela
   }
 
   return (
-    <li className="space-y-2 border-l-2 border-accent bg-[color-mix(in_srgb,var(--color-bg)_60%,transparent)] px-3 py-3" onKeyDown={(e) => e.key === 'Escape' && aoCancelar()}>
+    <li className={CLASSE_EDICAO} onKeyDown={(e) => e.key === 'Escape' && aoCancelar()}>
       <input aria-label="Descrição" value={rascunho.descricao} onChange={(e) => mudar('descricao', e.target.value)} className={CAMPO} />
       <div className="grid gap-2 sm:grid-cols-2">
         <SeletorCategoria valor={rascunho.categoria} onChange={(v) => mudar('categoria', v)} className="bg-bg" />
@@ -149,9 +139,13 @@ export default function ListaDespesas({
   const [editandoId, setEditandoId] = useState(null);
 
   return (
-    <section className="overflow-hidden rounded border border-border bg-surface" aria-label="Lista de despesas">
-      {/* ---------- 1) Barra do topo: filtros | pagas + marcar todas + gerenciar categorias ---------- */}
-      <div className="space-y-2 border-b border-border p-3">
+    <CardLista
+      rotulo="Lista de despesas"
+      total={total}
+      tom="negative"
+      // ---------- 1) Barra do topo: filtros | pagas + marcar todas + gerenciar categorias ----------
+      barra={
+        <>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {/* Filtros por cartão (só quando há cartões). */}
           {filtro.cartoes.length > 0 && (
@@ -215,8 +209,9 @@ export default function ListaDespesas({
           </div>
         )}
         {pagas.erro && <p role="alert" className="text-sm text-negative">{pagas.erro}</p>}
-      </div>
-
+        </>
+      }
+    >
       {/* ---------- 2) Linhas ---------- */}
       {carregando ? (
         <p className="p-4 text-sm text-muted">Carregando…</p>
@@ -249,7 +244,7 @@ export default function ListaDespesas({
                 key={d._id}
                 // Colunas: caixa | nome (flexível) | valor (estreita, ~130px, perto do nome) | ações.
                 // O hover clareia a LINHA INTEIRA (o <li> ocupa toda a largura), ajudando a seguir nome → valor.
-                className="group grid grid-cols-[44px_minmax(0,1fr)_auto_auto] items-center gap-x-2 sm:grid-cols-[44px_minmax(0,1fr)_130px_auto] px-2 py-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_4%,transparent)] sm:px-3"
+                className={`${CLASSE_LINHA} grid-cols-[44px_minmax(0,1fr)_auto_auto] sm:grid-cols-[44px_minmax(0,1fr)_130px_auto]`}
               >
                 {/* Área 1: caixa "Paga" (a linha calculada não tem — o pago dela vem da fatura). */}
                 <div>
@@ -289,43 +284,20 @@ export default function ListaDespesas({
                 {/* `sm:pr-6` (24px): o valor não fica colado nos botões de ação. */}
                 <Money value={d.valor} tone="negative" className={`text-right text-sm sm:pr-6 ${apagada}`} />
 
-                {/* Ações: escondidas até o hover (sempre visíveis em telas sem hover). No celular ficam
-                    empilhadas (uma sobre a outra) para sobrar largura para o nome. */}
-                <div
-                  className={[
-                    'flex flex-col sm:flex-row',
-                    d.virtual ? 'invisible' : '',
-                    '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
-                  ].join(' ')}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setEditandoId(d._id)}
-                    aria-label={`Editar ${d.descricao}`}
-                    className="flex h-9 w-9 items-center justify-center rounded text-muted hover:text-accent sm:h-10 sm:w-10"
-                  >
-                    <IconeLapis />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onExcluir(d._id)}
-                    aria-label={`Excluir ${d.descricao}`}
-                    className="flex h-9 w-9 items-center justify-center rounded text-muted hover:text-negative sm:h-10 sm:w-10"
-                  >
-                    ✕
-                  </button>
-                </div>
+                {/* Ações (editar/excluir): aparecem no hover; a linha calculada não tem (espaço mantido). */}
+                <AcoesLinha
+                  nome={d.descricao}
+                  oculto={d.virtual}
+                  onEditar={() => setEditandoId(d._id)}
+                  onExcluir={() => onExcluir(d._id)}
+                />
               </li>
             );
           })}
         </ul>
       )}
 
-      {/* ---------- 3) Rodapé: só o Total ---------- */}
-      <div className="flex items-baseline justify-end gap-3 border-t border-border bg-[color-mix(in_srgb,var(--color-fg)_4%,var(--color-surface))] px-4 py-3">
-        <span className="text-sm text-muted">Total</span>
-        <Money value={total} tone="negative" className="text-xl font-bold" />
-      </div>
-    </section>
+      {/* 3) Rodapé (só o Total) — montado pelo <CardLista>. */}
+    </CardLista>
   );
 }

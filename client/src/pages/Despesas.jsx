@@ -38,10 +38,17 @@ import { useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { mensagemFixosGerados, mesAtual, rotuloMes } from '../lib/mes.js';
+import { mensagemFixosGerados } from '../lib/mes.js';
 import { NOME_OUTROS } from '../lib/constants.js';
 import { useCategorias } from '../context/CategoriasContext.jsx';
-import SeletorMes from '../components/SeletorMes.jsx';
+// Layout compartilhado com Receitas: cabeçalho, faixa do formulário e corpo (lista + painel).
+import {
+  BotoesFaixa,
+  CabecalhoPagina,
+  CAMPO_FAIXA as INPUT,
+  CorpoComPainel,
+  FaixaFormulario,
+} from '../components/PaginaLancamentos.jsx';
 import SeletorCategoria from '../components/SeletorCategoria.jsx';
 import GerenciarCategorias from '../components/GerenciarCategorias.jsx';
 import ConfirmarExclusaoFixo from '../components/ConfirmarExclusaoFixo.jsx';
@@ -52,18 +59,6 @@ import PagamentoMesCard from '../components/PagamentoMesCard.jsx';
 import { useCartoes } from '../hooks/useCartoes.js';
 
 const FORM_VAZIO = { descricao: '', categoria: NOME_OUTROS, valor: '', recorrente: false, cartaoId: '' }; // '' = sem cartão
-
-const INPUT =
-  'min-h-[44px] w-full rounded border border-border bg-bg px-3 py-2 text-base text-fg ' +
-  'placeholder:text-muted focus:border-accent focus:outline-none';
-
-/** "Novembro de 2026 · em andamento" / "· fechado" / "· futuro" — situação do mês no subtítulo. */
-function subtituloDoMes(mes) {
-  const nome = rotuloMes(mes);
-  const atual = mesAtual();
-  const situacao = mes < atual ? 'fechado' : mes === atual ? 'em andamento' : 'futuro';
-  return `${nome.charAt(0).toUpperCase()}${nome.slice(1)} · ${situacao}`;
-}
 
 export default function Despesas() {
   const [mes, setMes] = useMesSelecionado();
@@ -272,35 +267,25 @@ export default function Despesas() {
   return (
     // CONTÊINER ÚNICO da página (`.container-pagina` em index.css: até 1120px, centralizado).
     <div className="container-pagina space-y-5">
-      {/* ================= CABEÇALHO: título + situação do mês | navegação do mês + "+ Nova despesa" ================= */}
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div>
-          <h1 className="text-lg font-semibold">Despesas</h1>
-          <p className="text-xs text-muted">{subtituloDoMes(mes)}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Botão do mês (painel de mês/ano) e "Hoje" — nada antes de MES_INICIAL. */}
-          <SeletorMes mes={mes} onChange={trocarMes} />
-          <button
-            type="button"
-            aria-expanded={formAberto}
-            onClick={() => setFormAberto((v) => !v)}
-            className="min-h-[44px] rounded bg-accent px-4 text-sm font-medium text-bg hover:opacity-90"
-          >
-            + Nova despesa
-          </button>
-        </div>
-      </header>
+      {/* ================= CABEÇALHO (compartilhado): título + situação do mês | [mês ▾] Hoje [+ Nova despesa] ================= */}
+      <CabecalhoPagina
+        titulo="Despesas"
+        mes={mes}
+        onTrocarMes={trocarMes}
+        rotuloNovo="+ Nova despesa"
+        formAberto={formAberto}
+        onAlternarForm={() => setFormAberto((v) => !v)}
+      />
 
       {/* ================= FAIXA DO FORMULÁRIO (recolhida até "+ Nova despesa") =================
           Uma linha no desktop largo: Descrição | Categoria | Cartão | Valor | Repete todo mês | Adicionar.
           No celular, campos empilhados. Continua aberta depois de adicionar; Esc ou "Fechar" recolhe. */}
       {formAberto && (
-        <form
+        <FaixaFormulario
+          rotulo="Nova despesa"
           onSubmit={adicionar}
-          onKeyDown={(e) => e.key === 'Escape' && setFormAberto(false)}
-          className="grid gap-2 rounded border border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] bg-surface p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_auto_auto] xl:items-center"
-          aria-label="Nova despesa"
+          onFechar={() => setFormAberto(false)}
+          classeGrade="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_auto_auto] xl:items-center"
         >
           <input
             placeholder="Descrição"
@@ -341,24 +326,9 @@ export default function Despesas() {
             />
             Repete todo mês
           </label>
-          <div className="flex gap-2 sm:col-span-2 xl:col-span-1">
-            <button
-              disabled={salvando}
-              className="min-h-[44px] flex-1 rounded bg-accent px-5 font-medium text-bg hover:opacity-90 disabled:opacity-60"
-            >
-              {salvando ? 'Salvando…' : 'Adicionar'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormAberto(false)}
-              aria-label="Fechar formulário"
-              className="min-h-[44px] rounded border border-border px-3 text-muted hover:text-fg"
-            >
-              ✕
-            </button>
-          </div>
+          <BotoesFaixa salvando={salvando} onFechar={() => setFormAberto(false)} className="sm:col-span-2 xl:col-span-1" />
           {erroForm && <p className="text-sm text-negative sm:col-span-2 xl:col-span-full">{erroForm}</p>}
-        </form>
+        </FaixaFormulario>
       )}
 
       {/* Avisos discretos: fixos gerados ao abrir o mês e propagação/ajuste dos fixos. */}
@@ -369,20 +339,18 @@ export default function Despesas() {
         </div>
       )}
 
-      {/* ================= CORPO: lista (1fr, ~760px) + painel lateral (340px), gap 20px =================
-          No DOM o painel vem ANTES (telas estreitas: painel → lista). No `lg` vira grade de 2 colunas
-          e o `order` põe a lista à esquerda e o painel à direita, ambos alinhados ao topo. */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-        {/* ---------- Painel lateral ---------- */}
-        <aside className="space-y-4 lg:order-2" aria-label="Resumo do mês e cartões">
-          <PagamentoMesCard total={totalMes} pago={pagoMes} />
-          {!carregando && !erro && (
-            <CartoesSecao mes={mes} situacoes={situacoes} cartoes={cartoes} aoAlterar={() => recarregar({ silencioso: true })} />
-          )}
-        </aside>
-
-        {/* ---------- Lista ---------- */}
-        <div className="min-w-0 lg:order-1">
+      {/* ================= CORPO (compartilhado): lista (1fr, ~760px) + painel lateral (340px) ================= */}
+      <CorpoComPainel
+        rotuloPainel="Resumo do mês e cartões"
+        painel={
+          <>
+            <PagamentoMesCard total={totalMes} pago={pagoMes} />
+            {!carregando && !erro && (
+              <CartoesSecao mes={mes} situacoes={situacoes} cartoes={cartoes} aoAlterar={() => recarregar({ silencioso: true })} />
+            )}
+          </>
+        }
+        lista={
           <ListaDespesas
             itens={itensExibidos}
             total={total}
@@ -406,8 +374,8 @@ export default function Despesas() {
             cartoesApi={cartoes}
             onGerenciarCategorias={() => setGerenciandoCategorias(true)}
           />
-        </div>
-      </div>
+        }
+      />
 
       {/* Pergunta ao excluir um FIXO: só este mês (padrão) ou também os meses seguintes. */}
       {excluindoFixo && (
