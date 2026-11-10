@@ -96,7 +96,7 @@ Finanças/
 │       │   ├── MenuUsuario.jsx              # menu do avatar no topo do celular (Perfil / Sair)
 │       │   ├── Layout.jsx                   # sidebar (>=md) / bottom nav (<md) + <Outlet>
 │       │   ├── IconesNav.jsx                # ícones de linha (SVG inline) do menu
-│       │   ├── ListaLancamentos.jsx         # tabela (>=md) / cards (<md) + edição inline
+│       │   ├── ListaLancamentos.jsx         # Receitas: tabela (>=md) / cards (<md) + edição inline
 │       │   ├── GuardadoCard.jsx             # Porquinho: card "Total guardado" (= soma das caixinhas) + média e mês em andamento
 │       │   ├── BarraCaixinhas.jsx           # Porquinho: barra empilhada + legenda (nome e %)
 │       │   ├── CaixinhaItem.jsx             # Porquinho: caixinha (cor, nome, valor, editar, excluir com confirmação)
@@ -108,8 +108,10 @@ Finanças/
 │       │   ├── CategoriasDonut.jsx          # Resumo: rosca (SVG) + lista por categoria, com destaque cruzado
 │       │   ├── MaioresDespesas.jsx          # Resumo: as 5 maiores despesas do mês
 │       │   ├── CategoriaPonto.jsx           # bolinha com a cor da categoria do usuário
-│       │   ├── CartoesSecao.jsx             # Despesas: seção "Cartões de crédito" (cards, criar/editar/excluir cartão)
-│       │   ├── CartaoCard.jsx               # Despesas: card de UM cartão (fatura do mês, não detalhado, fatura paga)
+│       │   ├── CartoesSecao.jsx             # Despesas (painel lateral): card "Cartões de crédito" (blocos, criar/editar/excluir)
+│       │   ├── CartaoCard.jsx               # Despesas: bloco de UM cartão (fatura do mês, não detalhado, fatura paga)
+│       │   ├── ListaDespesas.jsx            # Despesas: card da lista (filtros, 3 áreas por linha, edição, total)
+│       │   ├── PagamentoMesCard.jsx         # Despesas (painel lateral): "Pagamento do mês" (total, pago, falta)
 │       │   ├── SeletorCartao.jsx            # campo Cartão: Nenhum / cartões com bolinha / "+ Novo cartão"
 │       │   ├── SeletorCategoria.jsx         # campo Categoria com bolinhas + "+ Nova categoria" (mini-formulário)
 │       │   ├── FormCategoria.jsx            # mini-formulário de categoria: nome + grade de cores
@@ -119,7 +121,7 @@ Finanças/
 │           ├── Registro.jsx    # Tela de cadastro (com Nome e Sobrenome)
 │           ├── Perfil.jsx      # Perfil: nome/sobrenome + alterar senha
 │           ├── Receitas.jsx    # Formulário + tabela + total de receitas
-│           ├── Despesas.jsx    # Formulário + tabela + total de despesas + cartão de crédito + seção Categorias
+│           ├── Despesas.jsx    # Cabeçalho + faixa "+ Nova despesa" + lista + painel lateral (pagamento, cartões)
 │           ├── Resumo.jsx      # Cards, indicador Superávit/Déficit e gráfico
 │           ├── Porquinho.jsx   # Caixinhas + total guardado (atualização otimista)
 │           └── Metas.jsx       # card compacto do total + metas com valor/progresso (atualização otimista)
@@ -375,21 +377,58 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   valor de uma fixa gerada; dá para (des)marcar "Todo mês". **✕** exclui.
 
 ### Despesas (`/despesas`)
-- **Formulário**: `Descrição` (obrigatório), `Categoria` (as **categorias do usuário**, com a
-  bolinha de cor — ver [Categorias personalizadas](#categorias-personalizadas)) e `Valor`
-  (obrigatório, ≥ 0).
-- **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: lista e total do mês escolhido;
-  novas despesas são lançadas nesse mês. A seta "anterior" fica **desabilitada em
-  outubro/2026**.
-- **Repete todo mês** (checkbox no formulário): marca a despesa como **fixa**
-  ("↻ Todo mês" na lista).
-- **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as
-  despesas fixas do mês anterior (descrição, categoria e valor) para você só editar
-  o que mudou (ex.: a conta de luz), e a tela avisa quantas foram adicionadas.
-- **Lista**: descrição, categoria, fixo e valor; tabela no desktop, cards no
-  mobile; total do mês ao fim.
-- **Editar inline** (lápis): campos viram inputs (`Categoria` usa o mesmo seletor com bolinhas),
-  *Salvar* / *Cancelar* (PUT `/api/despesas/:id`). **✕** exclui.
+
+**Organização da tela** (só aparência; as regras de fixos, cartões, fatura, paga e totais não mudam):
+
+```
+Despesas                                   ‹  Novembro de 2026  ›  Hoje   [+ Nova despesa]
+Novembro de 2026 · em andamento
+[faixa "+ Nova despesa" — recolhida; abre logo abaixo do cabeçalho]
+┌ Lista (~600px) ─────────────────────────────┐  ┌ Painel (~290px) ─────────┐
+│ Todas · PicPay · Nubank   1 de 6 pagas  [Marcar todas como pagas]  Gerenciar categorias │
+│ [✓] Internet ↻ (● PicPay)          R$ 130,00 │  │ PAGAMENTO DO MÊS         │
+│     ● Utilidades                             │  │ R$ 2.180  ▓▓░░ Pago/Falta│
+│ ...                                          │  │ CARTÕES DE CRÉDITO · 2/5 │
+│                         Total   R$ 2.180,00  │  │ (um bloco por cartão)    │
+└──────────────────────────────────────────────┘  └──────────────────────────┘
+```
+
+- **Cabeçalho**: à esquerda "Despesas" e, pequeno e cinza, o mês e a situação ("· em andamento",
+  "· fechado" ou "· futuro"); à direita a navegação do mês (‹ mês ›, *Hoje* — a seta "anterior" fica
+  **desabilitada em outubro/2026**) e o botão dourado **+ Nova despesa**. Lista e totais são do mês
+  escolhido; novas despesas são lançadas nesse mês.
+- **Corpo em 2 colunas** a partir de 1280px (`xl`): a **lista** (~600px) e o **painel lateral**
+  (~290px), alinhados ao topo; o resto à direita fica livre. Abaixo disso (celular/tablet), **coluna
+  única**: cabeçalho → painel (Pagamento do mês, Cartões) → lista. Todos os blocos em card sólido.
+- **+ Nova despesa** abre uma faixa (borda dourada sutil) com **Descrição | Categoria** (com bolinha;
+  `+ Nova categoria` no fim) **| Cartão** ("Sem cartão" por padrão; `+ Novo cartão`) **| Valor | Repete
+  todo mês | Adicionar**. Depois de adicionar, os campos limpam e a faixa **continua aberta** para lançar
+  várias seguidas; **Esc** ou ✕ fecha. No celular os campos ficam empilhados.
+- **Lista** (card único):
+  - **barra do topo**: filtros por cartão (chip *Todas* + um chip por cartão, com bolinha), "**N de M
+    pagas**", o botão **Marcar todas como pagas** (com confirmação) e o link discreto **Gerenciar
+    categorias** (abre a mesma tela de gerenciar categorias numa janela);
+  - cada linha tem **3 áreas**: [caixa *Paga*] [nome] [valor]. O nome mostra, na 1ª linha, a descrição,
+    o **↻** dourado quando é *Repete todo mês* e a **pílula do cartão** (bolinha + nome); na 2ª, pequena e
+    cinza, a **categoria** com a bolinha da cor dela. Valor em vermelho, mono, à direita;
+  - **editar** (lápis) e **excluir** (✕) aparecem ao **passar o mouse** na linha (em telas sem mouse —
+    celular — ficam sempre visíveis, empilhados). Editar troca a linha pelos campos (mesma validação);
+    excluir um fixo pergunta "só este mês / este e os meses seguintes";
+  - despesa **paga** fica com nome, categoria e valor a ~50% (destaca o que falta pagar);
+  - a linha calculada **"Outras compras no cartão (nome)"** aparece com o selo *calculada*, sem caixa e sem
+    editar/excluir;
+  - **rodapé**: só "Total" + o valor grande em vermelho (soma das linhas mostradas).
+- **Painel lateral**:
+  - **PAGAMENTO DO MÊS**: total do mês em vermelho, barra verde com a fração paga, "Pago R$ x" (verde) e
+    "Falta R$ y" (dourado). Sempre o mês inteiro (sem o filtro de cartão);
+  - **CARTÕES DE CRÉDITO · N de 5** com *+ Novo*: um bloco por cartão — nome, editar/excluir,
+    "Detalhado nas despesas", **Fatura total do mês** (mostra o valor salvo) + *Salvar*, e "Outras compras
+    no cartão", *Fatura paga* e *Remover fatura* quando há fatura (ver
+    [Cartões de crédito](#cartões-de-crédito-vários-cartões-sem-contar-nada-duas-vezes)).
+- **Categoria**: as **categorias do usuário**, com a bolinha de cor (ver
+  [Categorias personalizadas](#categorias-personalizadas)). **Valor** obrigatório, ≥ 0.
+- **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as despesas fixas do
+  mês anterior (descrição, categoria, valor e cartão) e a tela avisa quantas foram adicionadas.
 - **Marcar como paga**: cada despesa tem uma **caixa de marcação grande** (44×44px de toque, mesmo
   estilo das Metas: verde `#3ECF8E` quando marcada). Marcada = texto levemente apagado (o valor
   continua visível). **Atualização otimista**: marca na hora e sincroniza com
@@ -397,8 +436,8 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
   despesas antigas valem como não pagas). **É só informativo**: total e saldo continuam somando
   *todas* as despesas. Os **fixos gerados automaticamente não herdam o status** (entram sempre
   como não pagos) e **editar não altera** o status.
-- **Topo da tela**: "**X de Y pagas**" e o botão **Marcar todas como pagas** (pede confirmação
-  na própria tela; age só nas pendentes do mês selecionado — `PATCH /api/despesas/pagas`).
+- **Marcar todas como pagas** (barra do topo da lista): pede confirmação na própria tela e age só nas
+  pendentes do mês selecionado (`PATCH /api/despesas/pagas`).
 - No **Resumo**, o card *Total de despesas* mostra **Pago** e **Falta pagar** (esta em amarelo
   `#D4A24C`) com uma barrinha fina do que já foi pago. Vale para qualquer mês navegável.
 

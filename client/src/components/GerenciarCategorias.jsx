@@ -13,12 +13,15 @@
  * Ao abrir, recarrega a lista para as contagens de despesas estarem em dia.
  *
  * Props:
+ *  - inicialAberto {boolean}  começa já aberta (usado quando a seção é mostrada numa janela/modal —
+ *              link "Gerenciar categorias" da lista de Despesas). Padrão false.
+ *  - onFechar  {() => void}  (opcional) chamado ao clicar "Fechar" — a janela em volta se fecha.
  *  - aoAlterar {() => void}  chamado depois de renomear/excluir, para a tela recarregar as
  *              despesas (os nomes de categoria delas podem ter mudado).
  *
  * Tema Grafite: card sólido (bg-surface + borda hairline); botões e linhas com ≥ 44px de toque.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCategorias } from '../context/CategoriasContext.jsx';
 import { NOME_OUTROS, ehOutros, primeiraCorLivre } from '../lib/constants.js';
 import CategoriaPonto from './CategoriaPonto.jsx';
@@ -50,9 +53,14 @@ function IconeLixeira() {
   );
 }
 
-export default function GerenciarCategorias({ aoAlterar }) {
+export default function GerenciarCategorias({ aoAlterar, inicialAberto = false, onFechar }) {
   const { categorias, limite, carregando, erro, recarregar, criar, atualizar, remover } = useCategorias();
-  const [aberto, setAberto] = useState(false);
+  const [aberto, setAberto] = useState(inicialAberto);
+
+  // Aberta desde o início (modal): atualiza as contagens de despesas ao montar.
+  useEffect(() => {
+    if (inicialAberto) recarregar();
+  }, [inicialAberto, recarregar]);
   const [editandoId, setEditandoId] = useState(null); // categoria com o formulário aberto
   const [excluindoId, setExcluindoId] = useState(null); // categoria com a confirmação aberta
   const [criando, setCriando] = useState(false); // formulário de nova categoria aberto
@@ -64,6 +72,7 @@ export default function GerenciarCategorias({ aoAlterar }) {
 
   /** Abre/fecha a seção; ao abrir, atualiza as contagens. */
   function alternar() {
+    if (aberto && onFechar) return onFechar(); // dentro de uma janela: "Fechar" fecha a janela
     const abrir = !aberto;
     setAberto(abrir);
     setEditandoId(null);

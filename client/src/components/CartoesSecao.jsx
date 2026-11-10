@@ -1,5 +1,6 @@
 /**
- * CartoesSecao — seção "Cartões de crédito" no topo da tela de Despesas: um <CartaoCard> por cartão
+ * CartoesSecao — card "CARTÕES DE CRÉDITO · N de 5" do PAINEL LATERAL da tela de Despesas (abaixo do
+ * "Pagamento do mês"; no celular, antes da lista): um bloco <CartaoCard> por cartão
  * (fatura do mês, parte não detalhada, fatura paga), mais criar/editar/excluir cartões.
  *
  * Props:
@@ -14,11 +15,11 @@
  * - "+ Novo cartão" no fim (desabilitado no limite de 5), já com a 1ª cor livre da paleta (tons
  *   discretos, sem verde/vermelho puros).
  * - ESTADO VAZIO: explica para que servem os cartões e oferece criar o primeiro.
- * Layout: 1 coluna no celular, 2 no desktop (`lg`).
+ * Layout: blocos empilhados (o painel é estreito, ~290px no desktop).
  */
 import { useState } from 'react';
 import { primeiraCorLivre } from '../lib/constants.js';
-import CartaoCard, { IconeCartao } from './CartaoCard.jsx';
+import CartaoCard from './CartaoCard.jsx';
 import FormCategoria from './FormCategoria.jsx';
 
 const qtdTexto = (n) => `${n} ${n === 1 ? 'despesa' : 'despesas'}`;
@@ -82,42 +83,39 @@ export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
   }
 
   return (
-    <section className="space-y-3" aria-label="Cartões de crédito">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-medium">
-          <span className="text-accent">
-            <IconeCartao size={18} />
-          </span>
-          Cartões de crédito
-          <span className="num text-xs font-normal text-muted">
-            · {lista.length} de {limite}
-          </span>
+    // Card SÓLIDO do painel lateral; cada cartão é um bloco mais escuro dentro dele.
+    <section className="space-y-3 rounded border border-border bg-surface p-4" aria-label="Cartões de crédito">
+      {/* Cabeçalho: "CARTÕES DE CRÉDITO · N de 5" e o link "+ Novo" (dourado) no canto. */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted">
+          Cartões de crédito <span className="num normal-case">· {lista.length} de {limite}</span>
         </h2>
         {!criando && (
           <button
             type="button"
             disabled={lista.length >= limite}
             onClick={() => focar({ novo: true })}
-            className="min-h-[44px] rounded border border-dashed border-border px-3 text-sm text-accent hover:opacity-80 disabled:cursor-not-allowed disabled:text-muted"
+            className="min-h-[36px] text-sm font-medium text-accent hover:opacity-80 disabled:cursor-not-allowed disabled:text-muted"
+            title={lista.length >= limite ? `Limite de ${limite} cartões` : undefined}
           >
-            {lista.length >= limite ? `Limite de ${limite} cartões` : '+ Novo cartão'}
+            + Novo
           </button>
         )}
       </div>
 
       {aviso && (
-        <p role="status" className="text-sm text-positive">
+        <p role="status" className="text-xs text-positive">
           {aviso}
         </p>
       )}
       {erro && (
-        <p role="alert" className="text-sm text-negative">
+        <p role="alert" className="text-xs text-negative">
           {erro}
         </p>
       )}
 
       {criando && (
-        <div className="rounded border border-accent bg-surface p-4">
+        <div className="rounded border border-accent bg-bg p-3">
           <p className="mb-3 text-sm font-medium">Novo cartão</p>
           <FormCategoria
             inicial={{ nome: '', cor: primeiraCorLivre(lista) }}
@@ -131,20 +129,20 @@ export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
 
       {itens.length === 0 && !criando ? (
         /* Estado vazio claro */
-        <div className="rounded border border-dashed border-border bg-surface p-4 text-sm">
-          <p className="font-medium">Nenhum cartão cadastrado</p>
+        <div className="rounded border border-dashed border-border bg-bg p-3 text-xs">
+          <p className="text-sm font-medium">Nenhum cartão cadastrado</p>
           <p className="mt-1 text-muted">
-            Cadastre seus cartões (ex.: PicPay, Nubank) para informar o total de cada fatura. As compras que
-            você não lançou entram no total — e as que você lançou nunca contam duas vezes.
+            Cadastre seus cartões (ex.: PicPay, Nubank) para informar o total de cada fatura. As compras que você não
+            lançou entram no total — e as que você lançou nunca contam duas vezes.
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+        <div className="space-y-2.5">
           {itens.map((s) => {
             const id = s.cartao._id;
             if (editandoId === id) {
               return (
-                <div key={id} className="rounded border border-accent bg-surface p-4">
+                <div key={id} className="rounded border border-accent bg-bg p-3">
                   <p className="mb-3 text-sm font-medium">Editar cartão</p>
                   <FormCategoria
                     inicial={{ nome: s.cartao.nome, cor: s.cartao.cor }}
@@ -158,7 +156,7 @@ export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
             if (excluindoId === id) {
               const qtd = qtdDe(id);
               return (
-                <div key={id} role="alert" className="space-y-3 rounded border border-negative bg-surface p-4 text-sm">
+                <div key={id} role="alert" className="space-y-3 rounded border border-negative bg-bg p-3 text-sm">
                   <p>
                     Excluir o cartão <span className="font-medium">"{s.cartao.nome}"</span>?{' '}
                     {qtd > 0
@@ -166,19 +164,19 @@ export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
                       : 'Nenhuma despesa usa este cartão.'}{' '}
                     As faturas informadas dele serão removidas.
                   </p>
-                  <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+                  <div className="flex gap-2 [&>button]:flex-1">
                     <button
                       type="button"
                       disabled={ocupado}
                       onClick={() => confirmarExclusao(s.cartao)}
-                      className="min-h-[44px] rounded bg-negative px-4 font-medium text-bg hover:opacity-90 disabled:opacity-60"
+                      className="min-h-[40px] rounded bg-negative px-3 font-medium text-bg hover:opacity-90 disabled:opacity-60"
                     >
                       {ocupado ? 'Excluindo…' : 'Excluir'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setExcluindoId(null)}
-                      className="min-h-[44px] rounded border border-border px-4 text-muted hover:text-fg"
+                      className="min-h-[40px] rounded border border-border px-3 text-muted hover:text-fg"
                     >
                       Cancelar
                     </button>
