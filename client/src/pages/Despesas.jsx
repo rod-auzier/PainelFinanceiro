@@ -128,25 +128,38 @@ export default function Despesas() {
   );
   // Andamento dos pagamentos do mês (só informativo; não altera o total).
   // ESCOPO do "pagar em lote" da barra da lista: todas as despesas do mês ou, com um chip de cartão
-  // selecionado, só as daquele cartão. O contador "N de M pagas" e o botão seguem esse escopo.
+  // selecionado, só as daquele cartão — e, nos dois casos, as LINHAS CALCULADAS dos cartões do escopo
+  // ("Outras compras no cartão", pagas pela fatura). O contador "N de M pagas" e o botão seguem esse escopo.
   const cartaoDoFiltro = filtroCartao ? cartoes.cartoes.find((c) => String(c._id) === filtroCartao) ?? null : null;
-  const escopo = cartaoDoFiltro ? despesas.filter((d) => String(cartaoDaDespesa(d)?._id) === filtroCartao) : despesas;
+  const escopo = cartaoDoFiltro
+    ? [
+        ...despesas.filter((d) => String(cartaoDaDespesa(d)?._id) === filtroCartao),
+        ...linhasVirtuais.filter((l) => String(l.cartaoId) === filtroCartao),
+      ]
+    : [...despesas, ...linhasVirtuais];
   const qtdPagas = escopo.filter((d) => d.paga).length;
   const qtdPendentes = escopo.length - qtdPagas;
   const escopoTodoPago = escopo.length > 0 && qtdPendentes === 0; // botão vira "Desmarcar…"
 
-  // Andamento do pagamento POR CARTÃO (para o botão "Marcar fatura como paga" e o selo "paga").
+  // Andamento do pagamento POR CARTÃO (para o botão "Marcar fatura como paga" e o selo "paga"):
+  // quantas despesas do cartão há no mês e quantas estão pagas, e se há LINHA CALCULADA (fatura − detalhado
+  // > 0) e se ela está paga (FaturaCartao.paga). Um cartão só com a linha calculada também pode ser pago.
   const pagamentoPorCartao = useMemo(() => {
     const mapa = {};
+    const de = (id) => (mapa[id] ??= { total: 0, pagas: 0, temCalculada: false, calculadaPaga: false });
     for (const d of despesas) {
       const id = cartaoDaDespesa(d)?._id;
       if (!id) continue;
-      mapa[id] ??= { total: 0, pagas: 0 };
-      mapa[id].total += 1;
-      if (d.paga) mapa[id].pagas += 1;
+      de(id).total += 1;
+      if (d.paga) de(id).pagas += 1;
+    }
+    for (const l of linhasVirtuais) {
+      const item = de(String(l.cartaoId));
+      item.temCalculada = true;
+      item.calculadaPaga = Boolean(l.paga);
     }
     return mapa;
-  }, [despesas, cartaoDaDespesa]);
+  }, [despesas, linhasVirtuais, cartaoDaDespesa]);
 
   const [avisoLote, setAvisoLote] = useState(null); // { mensagem, desfazer } do último "pagar em lote"
   const fecharAvisoLote = useCallback(() => setAvisoLote(null), []);
@@ -173,8 +186,10 @@ export default function Despesas() {
   /**
    * Marca/desmarca UMA despesa como paga — atualização OTIMISTA: a caixa muda na hora e a API
    * (PATCH /api/despesas/:id) é chamada em seguida; se falhar, volta ao estado anterior.
+   * Na LINHA CALCULADA a caixa alterna só a fatura do cartão (FaturaCartao.paga) — `alternarCalculada`.
    */
   async function alternarPaga(despesa) {
+    if (despesa.virtual) return alternarCalculada(despesa);
     const nova = !despesa.paga;
     setErroPaga('');
     setDespesas((lista) => lista.map((d) => (d._id === despesa._id ? { ...d, paga: nova } : d)));
@@ -187,21 +202,37 @@ export default function Despesas() {
   }
 
   /**
-   * "Marcar todas como pagas" (já confirmado): marca na hora todas as pendentes do mês e chama
-   * PATCH /api/despesas/pagas. Se falhar, recarrega a lista para voltar ao estado real.
-   */
-  /**
    * Aplica NA TELA (sem recarregar) o resultado de um "pagar em lote": as despesas `ids` ficam com
-   * `paga`; se o lote foi de um cartão com fatura informada, a fatura e a linha calculada dele também.
+   * `paga`, e cada fatura de `faturas` (`{ cartaoId, paga }`) muda a linha calculada e o card do cartão.
    */
-  function aplicarLote({ ids, paga, cartaoId, faturaPaga }) {
+  function aplicarLote({ ids, paga, faturas = [] }) {
     const alterados = new Set(ids);
     setDespesas((lista) => lista.map((d) => (alterados.has(String(d._id)) ? { ...d, paga } : d)));
-    if (cartaoId && faturaPaga !== null && faturaPaga !== undefined) {
-      setLinhasVirtuais((linhas) => linhas.map((l) => (String(l.cartaoId) === String(cartaoId) ? { ...l, paga: faturaPaga } : l)));
-      setSituacoes((lista) =>
-        lista.map((s) => (String(s.cartao._id) === String(cartaoId) && s.fatura ? { ...s, fatura: { ...s.fatura, paga: faturaPaga } } : s)),
-      );
+    if (!faturas.length) return;
+    const porCartao = new Map(faturas.map((f) => [String(f.cartaoId), f.paga]));
+    setLinhasVirtuais((linhas) =>
+      linhas.map((l) => (porCartao.has(String(l.cartaoId)) ? { ...l, paga: porCartao.get(String(l.cartaoId)) } : l)),
+    );
+    setSituacoes((lista) =>
+      lista.map((s) =>
+        porCartao.has(String(s.cartao._id)) && s.fatura ? { ...s, fatura: { ...s.fatura, paga: porCartao.get(String(s.cartao._id)) } } : s,
+      ),
+    );
+  }
+
+  /**
+   * Caixa da LINHA CALCULADA "Outras compras no cartão (nome)": alterna SÓ o pago da fatura do cartão
+   * (FaturaCartao.paga), sem mexer nas despesas (`ids: []`). Otimista: muda na hora; se falhar, volta.
+   */
+  async function alternarCalculada(linha) {
+    const nova = !linha.paga;
+    setErroPaga('');
+    aplicarLote({ ids: [], paga: nova, faturas: [{ cartaoId: linha.cartaoId, paga: nova }] });
+    try {
+      await api.patch('/despesas/pagas', { mes, cartaoId: linha.cartaoId, paga: nova, ids: [] });
+    } catch {
+      aplicarLote({ ids: [], paga: !nova, faturas: [{ cartaoId: linha.cartaoId, paga: !nova }] });
+      setErroPaga('Não foi possível atualizar o pagamento da fatura. Tente de novo.');
     }
   }
 
@@ -214,20 +245,25 @@ export default function Despesas() {
     setErroPaga('');
     try {
       const { data } = await api.patch('/despesas/pagas', { mes, paga, ...(cartao ? { cartaoId: cartao._id } : {}) });
-      const fatura = cartao && data.faturaPagaAntes !== null ? paga : null; // estado novo da fatura (se houver)
-      aplicarLote({ ids: data.ids, paga, cartaoId: cartao?._id, faturaPaga: fatura });
+      const faturas = data.faturas ?? []; // faturas tocadas: { _id, cartaoId, pagaAntes, paga }
+      aplicarLote({ ids: data.ids, paga, faturas });
 
-      const n = data.atualizadas;
+      // "N itens marcados como pagos": despesas alteradas + linhas calculadas que mudaram de estado.
+      const comCalculada = new Set(linhasVirtuais.map((l) => String(l.cartaoId)));
+      const calculadas = faturas.filter((f) => f.pagaAntes !== f.paga && comCalculada.has(String(f.cartaoId))).length;
+      const n = data.atualizadas + calculadas;
       const doCartao = cartao ? ` do ${cartao.nome}` : '';
-      const texto = n === 0 ? `Nenhuma despesa${doCartao} para ${paga ? 'marcar' : 'desmarcar'}` : `${n} ${n === 1 ? 'despesa' : 'despesas'}${doCartao} ${paga ? (n === 1 ? 'marcada como paga' : 'marcadas como pagas') : n === 1 ? 'desmarcada' : 'desmarcadas'}`;
+      const texto =
+        n === 0
+          ? `Nada${doCartao} para ${paga ? 'marcar' : 'desmarcar'}.`
+          : `${n} ${n === 1 ? 'item' : 'itens'}${doCartao} ${paga ? (n === 1 ? 'marcado como pago' : 'marcados como pagos') : n === 1 ? 'desmarcado' : 'desmarcados'}.`;
       setAvisoLote({
-        mensagem: cartao && data.faturaPagaAntes !== null ? `${texto} (fatura ${paga ? 'paga' : 'em aberto'}).` : `${texto}.`,
-        // Desfazer: só os ids alterados voltam ao valor anterior; a fatura volta ao estado anterior.
+        mensagem: texto,
+        // Desfazer: só os ids alterados voltam ao valor anterior, e cada fatura ao seu estado anterior.
         desfazer: async () => {
-          const corpo = { mes, paga: !paga, ids: data.ids, ...(cartao ? { cartaoId: cartao._id } : {}) };
-          if (cartao && data.faturaPagaAntes !== null) corpo.faturaPaga = data.faturaPagaAntes;
-          await api.patch('/despesas/pagas', corpo);
-          aplicarLote({ ids: data.ids, paga: !paga, cartaoId: cartao?._id, faturaPaga: cartao ? data.faturaPagaAntes : null });
+          const restaurarFaturas = faturas.map((f) => ({ _id: f._id, paga: f.pagaAntes }));
+          await api.patch('/despesas/pagas', { mes, paga: !paga, ids: data.ids, restaurarFaturas });
+          aplicarLote({ ids: data.ids, paga: !paga, faturas: faturas.map((f) => ({ cartaoId: f.cartaoId, paga: f.pagaAntes })) });
         },
       });
     } catch (err) {

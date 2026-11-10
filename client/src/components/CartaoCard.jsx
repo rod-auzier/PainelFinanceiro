@@ -13,8 +13,10 @@
  *  - sem fatura: ajuda "Informe o total da fatura para contar também as compras que você não lançou.";
  *  - botão "Marcar fatura como paga" (borda fina, texto dourado): marca como PAGAS, de uma vez, todas as
  *    despesas deste cartão no mês (e a fatura, se informada — a linha calculada conta como paga junto).
- *    Com tudo já pago vira "Desmarcar fatura"; sem despesas do cartão no mês fica desabilitado. Ao lado do
- *    nome aparece o selo verde "paga" quando todas as despesas do cartão no mês estão pagas;
+ *    Fica HABILITADO quando há algo a pagar: alguma despesa do cartão no mês OU a linha calculada (fatura
+ *    − detalhado > 0) — um cartão só com fatura informada também pode ser pago. Vira "Desmarcar fatura"
+ *    quando todas as despesas do cartão estão pagas E a linha calculada não existe ou está paga; nesse
+ *    mesmo estado aparece o selo verde "paga" ao lado do nome;
  *  - com fatura: "Outras compras no cartão" (o que entrou no total), aviso se o detalhado passa da
  *    fatura e o link "Remover fatura".
  *
@@ -23,7 +25,8 @@
  *  - situacao  {{ cartao: { _id, nome, cor }, fatura: { valor, paga } | null, detalhado, naoDetalhado, excedeu }}
  *  - aoAlterar {() => Promise<void>}  depois de salvar/remover/marcar: a tela recarrega as despesas.
  *  - onEditar / onExcluir {() => void}  ações sobre o cartão (a seção cuida delas).
- *  - pagamento {{ total, pagas }}  despesas deste cartão no mês e quantas já estão pagas.
+ *  - pagamento {{ total, pagas, temCalculada, calculadaPaga }}  despesas deste cartão no mês, quantas pagas,
+ *              se há linha calculada (fatura − detalhado > 0) e se ela está paga (FaturaCartao.paga).
  *  - onPagarFatura {(paga: boolean) => void}  pagar/despagar em lote (a página chama a API e mostra o
  *              aviso com "Desfazer").
  */
@@ -63,8 +66,11 @@ const IconeLixeira = () => (
 );
 
 export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExcluir, pagamento = { total: 0, pagas: 0 }, onPagarFatura }) {
-  // Todas as despesas do cartão no mês já pagas? (sem despesas, não conta como paga)
-  const tudoPago = pagamento.total > 0 && pagamento.pagas === pagamento.total;
+  // Há algo a pagar? (despesas do cartão no mês OU a linha calculada da fatura)
+  const temAlgo = pagamento.total > 0 || Boolean(pagamento.temCalculada);
+  // Tudo pago = todas as despesas pagas E (sem linha calculada OU fatura paga). Sem nada, não conta.
+  const tudoPago =
+    temAlgo && pagamento.pagas === pagamento.total && (!pagamento.temCalculada || Boolean(pagamento.calculadaPaga));
   const { cartao, fatura } = situacao;
   const [campo, setCampo] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -153,9 +159,9 @@ export default function CartaoCard({ mes, situacao, aoAlterar, onEditar, onExclu
       {/* Pagar a fatura em lote: todas as despesas deste cartão no mês (uma chamada só). */}
       <button
         type="button"
-        disabled={pagamento.total === 0}
+        disabled={!temAlgo}
         onClick={() => onPagarFatura?.(!tudoPago)}
-        title={pagamento.total === 0 ? 'Nenhuma despesa deste cartão neste mês' : undefined}
+        title={!temAlgo ? 'Nada a pagar neste cartão neste mês' : undefined}
         className="min-h-[40px] w-full rounded border border-border px-3 text-sm text-accent hover:border-accent disabled:cursor-not-allowed disabled:text-muted disabled:hover:border-border"
       >
         {tudoPago ? 'Desmarcar fatura' : 'Marcar fatura como paga'}

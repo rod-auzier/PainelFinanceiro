@@ -11,7 +11,8 @@
  *       linha 1: descrição + "↻" dourado (Repete todo mês) + pílula do cartão (bolinha + nome);
  *       linha 2: bolinha da cor da categoria + nome da categoria (pequeno, cinza).
  *     Despesa paga: nome, categoria e valor com opacidade ~50% (destaca o que falta pagar).
- *     Linha CALCULADA "Outras compras no cartão (nome)": selo "calculada", sem caixa e sem ações.
+ *     Linha CALCULADA "Outras compras no cartão (nome)": selo "calculada", sem editar/excluir, mas COM a
+ *     caixa "Paga" — que alterna o pago da fatura do cartão (FaturaCartao.paga).
  *  3) Rodapé: só "Total" + o valor grande em vermelho, à direita.
  *
  * Editar troca a linha por campos (descrição, categoria, cartão, valor, Repete todo mês) — mesma
@@ -263,15 +264,14 @@ export default function ListaDespesas({
                 // O hover clareia a LINHA INTEIRA (o <li> ocupa toda a largura), ajudando a seguir nome → valor.
                 className={`${CLASSE_LINHA} grid-cols-[44px_minmax(0,1fr)_auto_auto] sm:grid-cols-[44px_minmax(0,1fr)_130px_auto]`}
               >
-                {/* Área 1: caixa "Paga" (a linha calculada não tem — o pago dela vem da fatura). */}
+                {/* Área 1: caixa "Paga". Na linha CALCULADA ela alterna o pago da fatura do cartão
+                    (FaturaCartao.paga) — a página decide em `onAlternarPaga`. */}
                 <div>
-                  {!d.virtual && (
-                    <CaixaCheck
-                      marcada={Boolean(d.paga)}
-                      onChange={() => onAlternarPaga(d)}
-                      rotulo={d.paga ? `Desmarcar ${d.descricao} como paga` : `Marcar ${d.descricao} como paga`}
-                    />
-                  )}
+                  <CaixaCheck
+                    marcada={Boolean(d.paga)}
+                    onChange={() => onAlternarPaga(d)}
+                    rotulo={d.paga ? `Desmarcar ${d.descricao} como paga` : `Marcar ${d.descricao} como paga`}
+                  />
                 </div>
 
                 {/* Área 2: bloco do nome (linha 1: descrição + ↻ + cartão; linha 2: categoria). */}

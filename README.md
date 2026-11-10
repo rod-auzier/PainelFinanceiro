@@ -145,7 +145,7 @@ Finanças/
         │   ├── Receita.js      # { userId, fonte, descricao, valor, recorrente, createdAt }
         │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, cartao (antigo), cartaoId, createdAt }
         │   ├── Cartao.js       # { userId, nome (2–24, único), cor, padrao } — cartões de crédito (até 5)
-        │   ├── FaturaCartao.js # { userId, cartaoId, mes "AAAA-MM", valor, paga } — 1 por cartão e mês
+        │   ├── FaturaCartao.js # { userId, cartaoId, mes "AAAA-MM", valor, paga } — 1 por cartão e mês; `paga` = pago da linha calculada
         │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, caixinhaId?, createdAt }
         │   ├── Categoria.js    # { userId, nome (2–24, único por usuário sem diferenciar maiúsculas), cor, createdAt }
         │   └── FixosGerados.js # marcador (usuário, tipo, mês) da geração automática de fixos
@@ -477,8 +477,9 @@ Novembro de 2026 · em andamento
     celular — ficam sempre visíveis, empilhados). Editar troca a linha pelos campos (mesma validação);
     excluir um fixo pergunta "só este mês / este e os meses seguintes";
   - despesa **paga** fica com nome, categoria e valor a ~50% (destaca o que falta pagar);
-  - a linha calculada **"Outras compras no cartão (nome)"** aparece com o selo *calculada*, sem caixa e sem
-    editar/excluir;
+  - a linha calculada **"Outras compras no cartão (nome)"** aparece com o selo *calculada*, sem
+    editar/excluir, mas **com a caixa *Paga*** — que marca/desmarca só a parte calculada (o campo
+    `FaturaCartao.paga` daquele cartão e mês); paga, fica apagada como as demais;
   - **rodapé**: só "Total" + o valor grande em vermelho (soma das linhas mostradas).
 - **Painel lateral**:
   - **PAGAMENTO DO MÊS**: total do mês em vermelho, barra verde com a fração paga, "Pago R$ x" (verde) e
@@ -504,12 +505,23 @@ Novembro de 2026 · em andamento
   **pagas, de uma vez** (uma chamada só), **todas as despesas daquele cartão no mês exibido** — as sem
   cartão e as de outros cartões ficam como estavam. Se o cartão tem fatura informada, ela também fica paga,
   então a linha calculada "Outras compras no cartão (nome)" conta como paga: o total do cartão,
-  `max(fatura, detalhado)`, passa para **Pago** no "Pagamento do mês". Com tudo já pago o botão vira
-  **Desmarcar fatura** (volta todas a pendentes); sem despesas do cartão no mês fica desabilitado. Quando
-  todas as despesas do cartão estão pagas, aparece o selo verde **paga** ao lado do nome.
+  `max(fatura, detalhado)`, passa para **Pago** no "Pagamento do mês".
+  - **Habilitado** quando há qualquer coisa a pagar: alguma despesa do cartão no mês **ou** a linha
+    calculada (fatura − detalhado > 0). Assim um cartão **só com fatura informada** (ex.: Amazon, fatura
+    R$ 361,51 e detalhado R$ 0,00) também pode ser pago. Desabilitado só sem nenhum dos dois.
+  - Vira **Desmarcar fatura** (volta tudo a pendente) quando todas as despesas do cartão estão pagas **e**
+    a linha calculada não existe ou está paga; nesse mesmo estado aparece o selo verde **paga** ao lado do
+    nome. O botão da barra com o filtro do cartão segue a mesma regra; com *Todas*, marca as despesas do
+    mês e as linhas calculadas de **todos** os cartões.
+- **Pago da linha calculada** — `FaturaCartao.paga` (o campo que já existia; faturas antigas sem ele valem
+  "não paga", sem reescrever nada) representa **só** se a parte calculada (`max(fatura − detalhado, 0)`)
+  está paga. Paga, ela entra em **Pago**; não paga, em **Falta pagar** — no "Pagamento do mês" e no Resumo
+  (mesmo cálculo no backend, `services/cartao.js`). As despesas reais usam o `paga` delas. O **total** de
+  despesas não muda: só a divisão Pago / Falta pagar.
 - Depois de pagar/despagar em lote, a tela atualiza no lugar (sem recarregar) e mostra um aviso discreto —
-  "6 despesas do Neon marcadas como pagas" — com o link **Desfazer** por ~6 segundos, que reverte
-  **exatamente** os itens alterados (e a fatura). Mês aberto ou fechado não muda nada aqui.
+  "6 itens do Neon marcados como pagos" (despesas + linhas calculadas) — com o link **Desfazer** por
+  ~6 segundos, que reverte **exatamente** os itens alterados e o estado anterior de cada fatura. Mês aberto
+  ou fechado não muda nada aqui.
 - No **Resumo**, o card *Total de despesas* mostra **Pago** e **Falta pagar** (esta em amarelo
   `#D4A24C`) com uma barrinha fina do que já foi pago. Vale para qualquer mês navegável.
 
@@ -1027,7 +1039,7 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId?, mes? }` (`cartaoId`: cartão do usuário ou `null`) | `201 { despesa }` · `400` |
 | PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId? }` | `200 { despesa, propagadas }` (fixa: descrição/categoria/cartão/recorrente vão para os meses seguintes; valor e paga não) · `400` · `404` (não altera `paga`) |
 | PATCH  | `/api/despesas/:id`   | sim  | `{ paga: boolean }`                                | `200 { despesa }` · `400` · `404`                    |
-| PATCH  | `/api/despesas/pagas` | sim  | `{ mes, paga?, cartaoId?, ids?, faturaPaga? }`     | `200 { atualizadas, ids, faturaPagaAntes }` — pagar/despagar EM LOTE (um `updateMany`): todas as despesas do mês ou só as do cartão (e a fatura dele); `ids`/`faturaPaga` servem ao "Desfazer". Idempotente · `400` · `404` (cartão de outro usuário) |
+| PATCH  | `/api/despesas/pagas` | sim  | `{ mes, paga?, cartaoId?, ids?, restaurarFaturas? }` | `200 { atualizadas, ids, faturas, faturaPagaAntes }` — pagar/despagar EM LOTE (um `updateMany`): despesas do mês (ou só as do cartão) **e** as faturas informadas do mês (do cartão ou de todos) — o pago das linhas calculadas. `cartaoId` + `ids: []` = só a linha calculada do cartão. `ids`/`restaurarFaturas` servem ao "Desfazer". Idempotente · `400` · `404` (cartão de outro usuário) |
 | DELETE | `/api/despesas/:id`   | sim  | query `?escopo=seguintes` (opcional, só fixa)      | `200 { removidas }` (padrão: só esta; `seguintes`: também as cópias fixas dos meses seguintes) · `400` · `404` |
 | GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, outrasComprasCartao, cartaoExcedeu, saldo, totalPago, faltaPagar, fixosGerados }` — `totalDespesas` já CORRIGIDO pelos cartões (inclui `outrasComprasCartao`, a soma das partes não detalhadas de todas as faturas); `totalPago`/`faltaPagar` são só informativos (do mês; sem `mes`, de out/2026 em diante) |
 | GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado, caixinhas }` (mais recentes primeiro; já sincronizadas; cada meta com `caixinhaId` e `acompanhamento: { caixinha, saldoAtual, progresso, previsao }`; `caixinhas` = as do usuário, para o seletor) |

@@ -251,11 +251,15 @@ export async function atualizarPagamento(req, res) {
  *
  * - Só o campo `paga` das despesas do USUÁRIO, do MÊS e (se informado) do CARTÃO é alterado. Um único
  *   `updateMany`; idempotente (despesas que já estão no valor pedido não contam).
+ * - FATURAS: o "pago" da LINHA CALCULADA "Outras compras no cartão (nome)" (= max(fatura − detalhado, 0))
+ *   é o campo `FaturaCartao.paga` (o mesmo de sempre; faturas antigas sem o campo valem `false`). Por isso
+ *   a ação também marca/desmarca as faturas informadas no mês: a do CARTÃO (com `cartaoId`) ou as de
+ *   TODOS os cartões (sem `cartaoId`, no "Marcar todas como pagas" sem filtro). Assim um cartão que só tem
+ *   a linha calculada (fatura informada, nenhuma despesa detalhada) também pode ser pago.
  * - Com `cartaoId`: usa o mesmo critério de "despesa do cartão" do cálculo (inclui as antigas do cartão
- *   padrão) e também marca/desmarca a FATURA do cartão no mês (se houver fatura informada) — assim a
- *   linha calculada "Outras compras no cartão" conta como paga junto, como na regra de Pago / Falta pagar.
- * - `ids` (opcional) restringe a esses lançamentos — é como o "Desfazer" reverte EXATAMENTE os itens que a
- *   ação alterou; `faturaPaga` (opcional) devolve a fatura ao estado anterior.
+ *   padrão). `cartaoId` + `ids: []` = alterna SÓ a linha calculada daquele cartão (caixa da linha na lista).
+ * - `ids` (opcional) restringe as DESPESAS a esses lançamentos e `restaurarFaturas` (opcional) devolve cada
+ *   fatura ao estado anterior — é como o "Desfazer" reverte EXATAMENTE o que a ação alterou.
  * - Mês aberto ou fechado não faz diferença aqui.
  *
  * @route   PATCH /api/despesas/pagas
@@ -263,23 +267,33 @@ export async function atualizarPagamento(req, res) {
  * @param   {string}   req.body.mes          "AAAA-MM" (não anterior a MES_INICIAL). Obrigatório.
  * @param   {boolean}  [req.body.paga]       valor desejado (padrão `true`).
  * @param   {string}   [req.body.cartaoId]   só as despesas desse cartão (do próprio usuário). Sem ele: todas do mês.
- * @param   {string[]} [req.body.ids]        (Desfazer) só estes lançamentos.
- * @param   {boolean}  [req.body.faturaPaga] (Desfazer) valor a gravar na fatura do cartão (padrão: = `paga`).
- * @returns {200} `{ atualizadas, ids, faturaPagaAntes }` — quantas mudaram, quais (para o Desfazer) e
- *               como estava a fatura do cartão antes (`null` sem cartão ou sem fatura).
+ * @param   {string[]} [req.body.ids]        (Desfazer / linha calculada) só estes lançamentos (`[]` = nenhum).
+ * @param   {boolean}  [req.body.faturaPaga] valor a gravar na fatura do cartão (padrão: = `paga`). (Compatibilidade.)
+ * @param   {Array<{ _id: string, paga: boolean }>} [req.body.restaurarFaturas]  (Desfazer) estado anterior de
+ *               cada fatura; quando enviado, as faturas recebem exatamente esses valores.
+ * @returns {200} `{ atualizadas, ids, faturas, faturaPagaAntes }` — quantas despesas mudaram e quais;
+ *               `faturas` = `[{ _id, cartaoId, pagaAntes, paga }]` das faturas tocadas (cartaoId já resolvido,
+ *               inclusive o cartão padrão das faturas antigas); `faturaPagaAntes` = a do cartão (compatibilidade).
  * @returns {400} `{ message }` — `mes`/`paga`/`ids`/`faturaPaga` inválidos.
  * @returns {404} `{ message }` — cartão inexistente ou de outro usuário.
  */
 export async function marcarTodasPagas(req, res) {
   const { mes, erro } = lerMes(req.body?.mes);
   if (erro) return res.status(400).json({ message: erro });
-  const { paga = true, cartaoId, ids, faturaPaga } = req.body ?? {};
+  const { paga = true, cartaoId, ids, faturaPaga, restaurarFaturas } = req.body ?? {};
   if (typeof paga !== 'boolean') return res.status(400).json({ message: 'paga deve ser true ou false' });
   if (faturaPaga !== undefined && typeof faturaPaga !== 'boolean') {
     return res.status(400).json({ message: 'faturaPaga deve ser true ou false' });
   }
   if (ids !== undefined && (!Array.isArray(ids) || !ids.every((id) => mongoose.isValidObjectId(id)))) {
     return res.status(400).json({ message: 'ids inválidos' });
+  }
+  if (
+    restaurarFaturas !== undefined &&
+    (!Array.isArray(restaurarFaturas) ||
+      !restaurarFaturas.every((f) => f && mongoose.isValidObjectId(f._id) && typeof f.paga === 'boolean'))
+  ) {
+    return res.status(400).json({ message: 'restaurarFaturas inválido' });
   }
 
   // Escopo: usuário + mês (+ cartão) (+ ids) e só quem ainda NÃO está no valor pedido.
@@ -302,19 +316,38 @@ export async function marcarTodasPagas(req, res) {
     atualizadas = (await Despesa.updateMany({ _id: { $in: idsAlterados }, userId: req.userId }, { $set: { paga } })).modifiedCount;
   }
 
-  // Fatura do cartão no mês (se informada): acompanha, para a linha calculada contar como paga.
-  let faturaPagaAntes = null;
-  if (cartao) {
-    const fatura = await FaturaCartao.findOne({ ...filtroFaturasDoCartao(req.userId, cartao), mes });
-    if (fatura) {
-      faturaPagaAntes = Boolean(fatura.paga);
-      fatura.paga = faturaPaga ?? paga;
-      fatura.despesasMarcadas = []; // o "desfazer" agora é o do aviso da tela (ids devolvidos aqui)
-      await fatura.save();
+  // FATURAS do mês (o "pago" das linhas calculadas): a do cartão, ou as de todos os cartões.
+  const filtroFaturas = cartao ? { ...filtroFaturasDoCartao(req.userId, cartao), mes } : { userId: req.userId, mes };
+  const [faturasDoMes, padrao] = await Promise.all([
+    FaturaCartao.find(filtroFaturas).select('_id cartaoId paga'),
+    // Faturas antigas (sem cartaoId) são do cartão padrão: resolve o id para a tela saber de qual cartão é.
+    Cartao.findOne({ userId: req.userId, padrao: true }).select('_id').lean(),
+  ]);
+  const restaurar = restaurarFaturas ? new Map(restaurarFaturas.map((f) => [String(f._id), f.paga])) : null;
+
+  const faturas = [];
+  for (const fatura of faturasDoMes) {
+    // Desfazer: só as faturas listadas, cada uma com o seu valor anterior; senão, o valor pedido.
+    if (restaurar && !restaurar.has(String(fatura._id))) continue;
+    const novo = restaurar ? restaurar.get(String(fatura._id)) : (faturaPaga ?? paga);
+    const pagaAntes = Boolean(fatura.paga); // registros antigos sem o campo = false
+    if (pagaAntes !== novo) {
+      await FaturaCartao.updateOne({ _id: fatura._id, userId: req.userId }, { $set: { paga: novo, despesasMarcadas: [] } });
     }
+    faturas.push({
+      _id: String(fatura._id),
+      cartaoId: String(fatura.cartaoId ?? padrao?._id ?? ''),
+      pagaAntes,
+      paga: novo,
+    });
   }
 
-  return res.json({ atualizadas, ids: idsAlterados.map(String), faturaPagaAntes });
+  return res.json({
+    atualizadas,
+    ids: idsAlterados.map(String),
+    faturas,
+    faturaPagaAntes: cartao ? (faturas[0]?.pagaAntes ?? null) : null, // compatibilidade
+  });
 }
 
 /**
