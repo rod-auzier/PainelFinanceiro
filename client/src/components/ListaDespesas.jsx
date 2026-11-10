@@ -247,7 +247,8 @@ export default function ListaDespesas({
             return (
               <li
                 key={d._id}
-                className="group grid grid-cols-[44px_minmax(0,1fr)_auto_auto] items-center gap-x-2 px-2 py-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_4%,transparent)] sm:px-3"
+                // Colunas: caixa | nome (flexível) | valor (estreita, ~120px, perto do nome) | ações.
+                className="group grid grid-cols-[44px_minmax(0,1fr)_auto_auto] items-center gap-x-2 sm:grid-cols-[44px_minmax(0,1fr)_120px_auto] px-2 py-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-fg)_4%,transparent)] sm:px-3"
               >
                 {/* Área 1: caixa "Paga" (a linha calculada não tem — o pago dela vem da fatura). */}
                 <div>

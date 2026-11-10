@@ -384,7 +384,7 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 Despesas                                   ‹  Novembro de 2026  ›  Hoje   [+ Nova despesa]
 Novembro de 2026 · em andamento
 [faixa "+ Nova despesa" — recolhida; abre logo abaixo do cabeçalho]
-┌ Lista (~600px) ─────────────────────────────┐  ┌ Painel (~290px) ─────────┐
+┌ Lista (1fr, ~650px) ────────────────────────┐  ┌ Painel (290px) ──────────┐
 │ Todas · PicPay · Nubank   1 de 6 pagas  [Marcar todas como pagas]  Gerenciar categorias │
 │ [✓] Internet ↻ (● PicPay)          R$ 130,00 │  │ PAGAMENTO DO MÊS         │
 │     ● Utilidades                             │  │ R$ 2.180  ▓▓░░ Pago/Falta│
@@ -397,9 +397,13 @@ Novembro de 2026 · em andamento
   "· fechado" ou "· futuro"); à direita a navegação do mês (‹ mês ›, *Hoje* — a seta "anterior" fica
   **desabilitada em outubro/2026**) e o botão dourado **+ Nova despesa**. Lista e totais são do mês
   escolhido; novas despesas são lançadas nesse mês.
-- **Corpo em 2 colunas** a partir de 1280px (`xl`): a **lista** (~600px) e o **painel lateral**
-  (~290px), alinhados ao topo; o resto à direita fica livre. Abaixo disso (celular/tablet), **coluna
-  única**: cabeçalho → painel (Pagamento do mês, Cartões) → lista. Todos os blocos em card sólido.
+- **Contêiner único centralizado** (largura máxima **960px**, centralizado na área à direita do menu)
+  envolve o cabeçalho, a faixa "+ Nova despesa" e o corpo — o cabeçalho termina exatamente na borda
+  direita do painel lateral.
+- **Corpo em 2 colunas** a partir de 1024px de tela (`lg`): **lista** flexível (`1fr`, ~650px no
+  contêiner de 960px; coluna do valor estreita, ~120px, perto do nome) + **painel lateral** de 290px,
+  gap de 18px, alinhados ao topo. Abaixo disso, **coluna única** na largura toda (margem de 16px no
+  celular): cabeçalho → painel (Pagamento do mês, Cartões) → lista. Todos os blocos em card sólido.
 - **+ Nova despesa** abre uma faixa (borda dourada sutil) com **Descrição | Categoria** (com bolinha;
   `+ Nova categoria` no fim) **| Cartão** ("Sem cartão" por padrão; `+ Novo cartão`) **| Valor | Repete
   todo mês | Adicionar**. Depois de adicionar, os campos limpam e a faixa **continua aberta** para lançar
