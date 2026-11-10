@@ -86,7 +86,7 @@ function EdicaoDespesa({ despesa, cartaoInicial, cartoesApi, aoSalvar, aoCancela
   }
 
   return (
-    <li className="space-y-2 border-l-2 border-accent bg-bg/60 px-3 py-3" onKeyDown={(e) => e.key === 'Escape' && aoCancelar()}>
+    <li className="space-y-2 border-l-2 border-accent bg-[color-mix(in_srgb,var(--color-bg)_60%,transparent)] px-3 py-3" onKeyDown={(e) => e.key === 'Escape' && aoCancelar()}>
       <input aria-label="Descrição" value={rascunho.descricao} onChange={(e) => mudar('descricao', e.target.value)} className={CAMPO} />
       <div className="grid gap-2 sm:grid-cols-2">
         <SeletorCategoria valor={rascunho.categoria} onChange={(v) => mudar('categoria', v)} className="bg-bg" />

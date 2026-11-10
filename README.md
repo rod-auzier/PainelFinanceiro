@@ -102,7 +102,8 @@ Finanças/
 │       │   ├── CaixinhaItem.jsx             # Porquinho: caixinha (cor, nome, valor, editar, excluir com confirmação)
 │       │   ├── MetaItem.jsx                 # meta: checkbox grande, barra de progresso, editar, lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
-│       │   ├── SeletorMes.jsx               # ‹ mês › — navegação entre meses (Receitas/Despesas/Resumo)
+│       │   ├── SeletorMes.jsx               # ‹ [mês ▾] › Hoje — navegação entre meses (Receitas/Despesas/Resumo)
+│       │   ├── MonthPicker.jsx              # botão do mês + painel ‹ ANO › com a grade Jan…Dez (usado pelo SeletorMes)
 │       │   ├── ResumoSaldoCard.jsx          # Resumo: saldo grande, selo, barra "gastou N% da receita", variação
 │       │   ├── ResumoTotalCard.jsx          # Resumo: card de receitas/despesas com ícone e comparação
 │       │   ├── CategoriasDonut.jsx          # Resumo: rosca (SVG) + lista por categoria, com destaque cruzado
@@ -294,6 +295,29 @@ só as **mapeia** para classes utilitárias — nenhum componente tem cor hardco
   `bg` (mínimo AA = 4,5:1); texto principal 15,3:1; verde 9,3:1, vermelho 5,3:1 e amarelo
   8,0:1 sobre `surface`. As divisórias e a diferença card/fundo são propositalmente sutis
   (~1,2:1 e ~1,1:1), como no tema anterior — a separação vem do contorno hairline.
+
+---
+
+## Seletor de mês
+
+Componente **único** (`SeletorMes` + `MonthPicker`), usado em Resumo, Receitas e Despesas — mesmo
+contrato de antes (o mês selecionado em `"AAAA-MM"`). Só interface: nenhuma regra de dados muda.
+
+- **‹** e **›** andam mês a mês; **‹** fica desabilitada em **outubro/2026** (`MES_INICIAL`). **Hoje**
+  aparece quando o mês escolhido não é o atual.
+- O **nome do mês** é um botão (borda fina + **▾**). Ele abre um painel flutuante logo abaixo:
+  - topo **‹ ANO ›**: ‹ desabilitada em 2026 (ano de `MES_INICIAL`); › vai até o ano atual (ou até o ano
+    do mês escolhido, se as setas já levaram a um ano à frente). Ao abrir, mostra o ano do mês escolhido;
+  - grade **4×3** com Jan…Dez. Meses antes de outubro/2026 aparecem **apagados** e não clicáveis
+    (meses futuros continuam permitidos, como pelas setas);
+  - mês escolhido em **dourado** (borda + fundo suave); mês atual com um **pontinho verde**;
+  - rodapé: "● mês atual" e o link dourado **Ir para hoje**;
+  - clicar num mês navega e fecha; fecha também com **Esc** ou clique fora.
+- **Teclado**: o foco entra no mês escolhido; **←/→** andam 1 mês, **↑/↓** uma linha (4 meses),
+  **Enter/Espaço** escolhem, **PageUp/PageDown** trocam o ano, **Esc** fecha e devolve o foco ao botão.
+  O botão tem `aria-haspopup`.
+- **Celular**: o painel abre **centralizado** na tela, com ~90% da largura e fundo escurecido (tocar nele
+  fecha).
 
 ---
 

@@ -299,7 +299,7 @@ export default function Despesas() {
         <form
           onSubmit={adicionar}
           onKeyDown={(e) => e.key === 'Escape' && setFormAberto(false)}
-          className="grid gap-2 rounded border border-accent/50 bg-surface p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_auto_auto] xl:items-center"
+          className="grid gap-2 rounded border border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] bg-surface p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_auto_auto] xl:items-center"
           aria-label="Nova despesa"
         >
           <input

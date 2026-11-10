@@ -1,5 +1,8 @@
 /**
- * SeletorMes — navegação simples entre meses: "‹ novembro de 2026 ›".
+ * SeletorMes — navegação entre meses: "‹ [Novembro de 2026 ▾] ›  Hoje". Usado em Despesas, Receitas
+ * e Resumo (componente ÚNICO — nenhuma página tem cópia própria).
+ * O nome do mês é o <MonthPicker>: um botão que abre um painel com ‹ ANO › e a grade Jan…Dez para pular
+ * direto para qualquer mês (ver MonthPicker.jsx).
  *
  * Props:
  *  - mes      {string}              mês selecionado, "AAAA-MM".
@@ -8,17 +11,15 @@
  *
  * Os botões têm 44x44px (área de toque). O botão "Hoje" só aparece quando o
  * mês selecionado não é o atual. A seta "anterior" fica DESABILITADA (apagada) em
- * MES_INICIAL (outubro/2026): não dá para ir antes disso. Componente controlado,
- * sem estado próprio.
+ * MES_INICIAL (outubro/2026): não dá para ir antes disso (no painel, os meses anteriores também
+ * ficam apagados). Componente controlado: o mês vive na página ("AAAA-MM").
  */
-import { MES_INICIAL, deslocarMes, mesAtualDoPainel, rotuloMes } from '../lib/mes.js';
+import { MES_INICIAL, deslocarMes, mesAtualDoPainel } from '../lib/mes.js';
+import MonthPicker from './MonthPicker.jsx';
 
 const BOTAO =
   'flex h-11 w-11 items-center justify-center rounded border border-border bg-surface text-xl ' +
   'text-muted hover:text-fg disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-muted';
-
-// "novembro de 2026" → "Novembro de 2026" (só a 1ª letra; `capitalize` do CSS poria "De").
-const primeiraMaiuscula = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export default function SeletorMes({ mes, onChange }) {
   return (
@@ -33,9 +34,8 @@ export default function SeletorMes({ mes, onChange }) {
       >
         ‹
       </button>
-      <span className="min-w-[9.5rem] text-center text-sm font-medium" aria-live="polite">
-        {primeiraMaiuscula(rotuloMes(mes))}
-      </span>
+      {/* Nome do mês = botão do painel de escolha de mês/ano. */}
+      <MonthPicker mes={mes} onChange={onChange} />
       <button type="button" aria-label="Próximo mês" onClick={() => onChange(deslocarMes(mes, 1))} className={BOTAO}>
         ›
       </button>
