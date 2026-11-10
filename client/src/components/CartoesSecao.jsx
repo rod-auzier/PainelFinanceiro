@@ -84,7 +84,7 @@ export default function CartoesSecao({ mes, situacoes, cartoes, aoAlterar }) {
 
   return (
     // Card SÓLIDO do painel lateral; cada cartão é um bloco mais escuro dentro dele.
-    <section className="space-y-3 rounded border border-border bg-surface p-4" aria-label="Cartões de crédito">
+    <section className="space-y-3 rounded border border-border bg-surface p-5" aria-label="Cartões de crédito">
       {/* Cabeçalho: "CARTÕES DE CRÉDITO · N de 5" e o link "+ Novo" (dourado) no canto. */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted">

@@ -15,7 +15,8 @@ export default function PagamentoMesCard({ total, pago }) {
   const fracao = total > 0 ? Math.min(Math.max(pago / total, 0), 1) : 0;
 
   return (
-    <section className="rounded border border-border bg-surface p-4" aria-label="Pagamento do mês">
+    // Padding de 20px: aproveita a largura do painel lateral (340px).
+    <section className="rounded border border-border bg-surface p-5" aria-label="Pagamento do mês">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Pagamento do mês</p>
       <Money value={total} tone="negative" className="mt-1 block text-2xl font-semibold" />
 

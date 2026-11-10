@@ -6,16 +6,16 @@
  *  │ "Despesas" + "Novembro de 2026 · em andamento"     [mês ▾]  Hoje   [+ Nova despesa]     │
  *  └─────────────────────────────────────────────────────────────────────────────────────────┘
  *  [faixa do formulário — recolhida; abre com "+ Nova despesa", Esc fecha]
- *  ┌ Lista (1fr, até ~650px) ──────────────┐ ┌ Painel lateral (290px) ┐
+ *  ┌ Lista (1fr, ~760px) ──────────────────┐ ┌ Painel lateral (340px) ┐
  *  │ filtros | N de M pagas | marcar todas │ │ PAGAMENTO DO MÊS        │
  *  │ [paga] [nome / categoria]   [valor]   │ │ CARTÕES DE CRÉDITO      │
  *  │ Total                        R$ x     │ └─────────────────────────┘
  *  └──────────────────────────────────────┘
- *  - CONTÊINER ÚNICO centralizado (largura máx. 960px, `mx-auto`) envolve cabeçalho, faixa do
- *    formulário e corpo — tudo alinhado: o cabeçalho termina exatamente na borda direita do painel.
+ *  - CONTÊINER ÚNICO centralizado (`.container-pagina`, largura máx. 1120px — o mesmo de Receitas)
+ *    envolve cabeçalho, faixa do formulário e corpo — tudo alinhado: o cabeçalho termina exatamente
+ *    na borda direita do painel.
  *  - Corpo, a partir de `lg` (1024px de tela): 2 colunas alinhadas ao topo — lista flexível (1fr;
- *    no contêiner de 960px fica com ~650px) + painel de 290px, gap de 18px. (Com o menu lateral de
- *    224px, é a partir dessa largura de tela que sobram ~740px de conteúdo para as duas colunas.)
+ *    no contêiner de 1120px fica com ~760px) + painel de 340px, gap de 20px.
  *  - Abaixo disso: coluna única, largura toda (o <Layout> já dá 16px de margem no celular) —
  *    cabeçalho → painel (Pagamento, Cartões) → lista.
  *  - Todos os blocos em fundo SÓLIDO (card `surface`), sobre o fundo em grade do tema Grafite.
@@ -270,8 +270,8 @@ export default function Despesas() {
     d.virtual ? cartoes.cartoes.find((c) => String(c._id) === String(d.cartaoId)) ?? null : cartaoDaDespesa(d);
 
   return (
-    // CONTÊINER ÚNICO da página: até 960px, centralizado na área à direita do menu lateral.
-    <div className="mx-auto max-w-[960px] space-y-5">
+    // CONTÊINER ÚNICO da página (`.container-pagina` em index.css: até 1120px, centralizado).
+    <div className="container-pagina space-y-5">
       {/* ================= CABEÇALHO: título + situação do mês | navegação do mês + "+ Nova despesa" ================= */}
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div>
@@ -369,10 +369,10 @@ export default function Despesas() {
         </div>
       )}
 
-      {/* ================= CORPO: lista (1fr) + painel lateral (290px), gap 18px =================
+      {/* ================= CORPO: lista (1fr, ~760px) + painel lateral (340px), gap 20px =================
           No DOM o painel vem ANTES (telas estreitas: painel → lista). No `lg` vira grade de 2 colunas
           e o `order` põe a lista à esquerda e o painel à direita, ambos alinhados ao topo. */}
-      <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_290px] lg:items-start">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         {/* ---------- Painel lateral ---------- */}
         <aside className="space-y-4 lg:order-2" aria-label="Resumo do mês e cartões">
           <PagamentoMesCard total={totalMes} pago={pagoMes} />

@@ -177,7 +177,9 @@ export default function Receitas() {
   ];
 
   return (
-    <div className="space-y-6">
+    // CONTÊINER ÚNICO da página (`.container-pagina` em index.css: até 1120px, centralizado — o mesmo
+    // de Despesas), envolvendo cabeçalho, formulário e lista.
+    <div className="container-pagina space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">Receitas</h1>
         {/* Seletor de mês: mês anterior / próximo (e "Hoje"). */}

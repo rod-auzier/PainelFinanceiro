@@ -387,6 +387,7 @@ Mesmo formulário, para quem já tem conta. Credenciais inválidas mostram a
 mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 
 ### Receitas (`/receitas`)
+- **Largura**: a página usa o mesmo contêiner centralizado de Despesas (`.container-pagina`, até 1120px).
 - **Formulário**: `Fonte` (obrigatório), `Descrição` (opcional) e `Valor`
   (obrigatório, ≥ 0). *Adicionar receita* salva e a lista recarrega.
 - **Seletor de mês** (botão do mês ▾ e *Hoje* — ver [Seletor de mês](#seletor-de-mês)) no topo: a lista
@@ -410,7 +411,7 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 Despesas                                   [Novembro de 2026 ▾]  Hoje   [+ Nova despesa]
 Novembro de 2026 · em andamento
 [faixa "+ Nova despesa" — recolhida; abre logo abaixo do cabeçalho]
-┌ Lista (1fr, ~650px) ────────────────────────┐  ┌ Painel (290px) ──────────┐
+┌ Lista (1fr, ~760px) ────────────────────────┐  ┌ Painel (340px) ──────────┐
 │ Todas · PicPay · Nubank   1 de 6 pagas  [Marcar todas como pagas]  Gerenciar categorias │
 │ [✓] Internet ↻ (● PicPay)          R$ 130,00 │  │ PAGAMENTO DO MÊS         │
 │     ● Utilidades                             │  │ R$ 2.180  ▓▓░░ Pago/Falta│
@@ -423,12 +424,14 @@ Novembro de 2026 · em andamento
   "· fechado" ou "· futuro"); à direita o seletor de mês (botão do mês ▾ e *Hoje* — ver
   [Seletor de mês](#seletor-de-mês); nada antes de outubro/2026) e o botão dourado **+ Nova despesa**. Lista e totais são do mês
   escolhido; novas despesas são lançadas nesse mês.
-- **Contêiner único centralizado** (largura máxima **960px**, centralizado na área à direita do menu)
+- **Contêiner único centralizado** (classe `.container-pagina` em `client/src/index.css`: largura máxima
+  **1120px**, centralizado na área à direita do menu — **o mesmo de Receitas**)
   envolve o cabeçalho, a faixa "+ Nova despesa" e o corpo — o cabeçalho termina exatamente na borda
   direita do painel lateral.
-- **Corpo em 2 colunas** a partir de 1024px de tela (`lg`): **lista** flexível (`1fr`, ~650px no
-  contêiner de 960px; coluna do valor estreita, ~120px, perto do nome) + **painel lateral** de 290px,
-  gap de 18px, alinhados ao topo. Abaixo disso, **coluna única** na largura toda (margem de 16px no
+- **Corpo em 2 colunas** a partir de 1024px de tela (`lg`): **lista** flexível (`1fr`, ~760px no
+  contêiner de 1120px; coluna do valor estreita, ~130px, com 24px de folga à direita, perto do nome; o
+  hover clareia a linha inteira) + **painel lateral** de 340px (cards com 20px de padding interno), gap
+  de 20px, alinhados ao topo. Abaixo disso, **coluna única** na largura toda (margem de 16px no
   celular): cabeçalho → painel (Pagamento do mês, Cartões) → lista. Todos os blocos em card sólido.
 - **+ Nova despesa** abre uma faixa (borda dourada sutil) com **Descrição | Categoria** (com bolinha;
   `+ Nova categoria` no fim) **| Cartão** ("Sem cartão" por padrão; `+ Novo cartão`) **| Valor | Repete

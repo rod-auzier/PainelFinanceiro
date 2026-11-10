@@ -113,6 +113,15 @@
   .num {
     @apply font-mono tabular-nums;
   }
+
+  /* CONTÊINER ÚNICO das páginas com lista (Despesas, Receitas): largura máxima de 1120px,
+     centralizado na área à direita do menu. Mudar a largura aqui vale para todas que o usam.
+     Abaixo disso ele ocupa a largura toda (a margem lateral vem do <main> do Layout: 16px no
+     celular). */
+  .container-pagina {
+    max-width: 1120px;
+    margin-inline: auto;
+  }
 }
 
 /* --- Animações de entrada do Resumo (barras e rosca "preenchendo") ---
