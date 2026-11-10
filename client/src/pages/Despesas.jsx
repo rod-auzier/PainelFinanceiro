@@ -3,7 +3,7 @@
  *
  * LAYOUT (só apresentação — nenhuma regra de negócio mora aqui; os cálculos vêm da API)
  *  ┌ Cabeçalho ──────────────────────────────────────────────────────────────────────────────┐
- *  │ "Despesas" + "Novembro de 2026 · em andamento"     ‹ mês ›  Hoje   [+ Nova despesa]     │
+ *  │ "Despesas" + "Novembro de 2026 · em andamento"     [mês ▾]  Hoje   [+ Nova despesa]     │
  *  └─────────────────────────────────────────────────────────────────────────────────────────┘
  *  [faixa do formulário — recolhida; abre com "+ Nova despesa", Esc fecha]
  *  ┌ Lista (1fr, até ~650px) ──────────────┐ ┌ Painel lateral (290px) ┐
@@ -279,7 +279,7 @@ export default function Despesas() {
           <p className="text-xs text-muted">{subtituloDoMes(mes)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* ‹ mês › e "Hoje" (mesma lógica de antes: não volta antes de MES_INICIAL). */}
+          {/* Botão do mês (painel de mês/ano) e "Hoje" — nada antes de MES_INICIAL. */}
           <SeletorMes mes={mes} onChange={trocarMes} />
           <button
             type="button"

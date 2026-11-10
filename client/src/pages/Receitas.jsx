@@ -2,7 +2,7 @@
  * Tela de Receitas (rota `/receitas`, dentro do <Layout>).
  *
  * Responsabilidades:
- *  - mostrar as receitas do MÊS selecionado (seletor ‹ mês › no topo →
+ *  - mostrar as receitas do MÊS selecionado (seletor de mês no topo →
  *    GET /api/receitas?mes=AAAA-MM via useRecurso);
  *  - criar receita (POST /api/receitas) com Fonte, Descrição, Valor e o
  *    checkbox "Repete todo mês" (`recorrente`). A receita é lançada no mês

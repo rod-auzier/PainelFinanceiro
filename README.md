@@ -102,7 +102,7 @@ Finanças/
 │       │   ├── CaixinhaItem.jsx             # Porquinho: caixinha (cor, nome, valor, editar, excluir com confirmação)
 │       │   ├── MetaItem.jsx                 # meta: checkbox grande, barra de progresso, editar, lixeira
 │       │   ├── Money.jsx                    # valor R$ em fonte mono + tabular-nums
-│       │   ├── SeletorMes.jsx               # ‹ [mês ▾] › Hoje — navegação entre meses (Receitas/Despesas/Resumo)
+│       │   ├── SeletorMes.jsx               # [mês ▾] Hoje — navegação entre meses (Receitas/Despesas/Resumo)
 │       │   ├── MonthPicker.jsx              # botão do mês + painel ‹ ANO › com a grade Jan…Dez (usado pelo SeletorMes)
 │       │   ├── ResumoSaldoCard.jsx          # Resumo: saldo grande, selo, barra "gastou N% da receita", variação
 │       │   ├── ResumoTotalCard.jsx          # Resumo: card de receitas/despesas com ícone e comparação
@@ -303,9 +303,11 @@ só as **mapeia** para classes utilitárias — nenhum componente tem cor hardco
 Componente **único** (`SeletorMes` + `MonthPicker`), usado em Resumo, Receitas e Despesas — mesmo
 contrato de antes (o mês selecionado em `"AAAA-MM"`). Só interface: nenhuma regra de dados muda.
 
-- **‹** e **›** andam mês a mês; **‹** fica desabilitada em **outubro/2026** (`MES_INICIAL`). **Hoje**
-  aparece quando o mês escolhido não é o atual.
-- O **nome do mês** é um botão (borda fina + **▾**). Ele abre um painel flutuante logo abaixo:
+- **Sem setas laterais**: a navegação é pelo **botão do mês** (borda fina + **▾**, largura mínima de
+  170px) e pelo link **Hoje** (aparece quando o mês escolhido não é o atual).
+- **Atalho**: com o botão do mês focado, **←** vai ao mês anterior (nunca antes de outubro/2026,
+  `MES_INICIAL`) e **→** ao seguinte (só até o mês atual).
+- O botão abre um painel flutuante logo abaixo:
   - topo **‹ ANO ›**: ‹ desabilitada em 2026 (ano de `MES_INICIAL`); › vai até o ano atual (ou até o ano
     do mês escolhido, se as setas já levaram a um ano à frente). Ao abrir, mostra o ano do mês escolhido;
   - grade **4×3** com Jan…Dez. Meses antes de outubro/2026 aparecem **apagados** e não clicáveis
@@ -387,9 +389,9 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 ### Receitas (`/receitas`)
 - **Formulário**: `Fonte` (obrigatório), `Descrição` (opcional) e `Valor`
   (obrigatório, ≥ 0). *Adicionar receita* salva e a lista recarrega.
-- **Seletor de mês** (‹ mês ›, e *Hoje*) no topo: a lista e o total mostram só
-  o mês escolhido; novas receitas são lançadas nesse mês. A seta "anterior" fica
-  **desabilitada em outubro/2026** (ver [Início do painel](#início-do-painel-e-fixos-automáticos)).
+- **Seletor de mês** (botão do mês ▾ e *Hoje* — ver [Seletor de mês](#seletor-de-mês)) no topo: a lista
+  e o total mostram só o mês escolhido; novas receitas são lançadas nesse mês. Nada antes de
+  **outubro/2026** (ver [Início do painel](#início-do-painel-e-fixos-automáticos)).
 - **Repete todo mês** (checkbox no formulário): marca a receita como **fixa**
   (aparece como "↻ Todo mês" na lista).
 - **Fixos automáticos** (não há botão): ao abrir um mês, o servidor cria sozinho as
@@ -405,7 +407,7 @@ mensagem de erro vinda da API. Ao entrar, vai para `/resumo`.
 **Organização da tela** (só aparência; as regras de fixos, cartões, fatura, paga e totais não mudam):
 
 ```
-Despesas                                   ‹  Novembro de 2026  ›  Hoje   [+ Nova despesa]
+Despesas                                   [Novembro de 2026 ▾]  Hoje   [+ Nova despesa]
 Novembro de 2026 · em andamento
 [faixa "+ Nova despesa" — recolhida; abre logo abaixo do cabeçalho]
 ┌ Lista (1fr, ~650px) ────────────────────────┐  ┌ Painel (290px) ──────────┐
@@ -418,8 +420,8 @@ Novembro de 2026 · em andamento
 ```
 
 - **Cabeçalho**: à esquerda "Despesas" e, pequeno e cinza, o mês e a situação ("· em andamento",
-  "· fechado" ou "· futuro"); à direita a navegação do mês (‹ mês ›, *Hoje* — a seta "anterior" fica
-  **desabilitada em outubro/2026**) e o botão dourado **+ Nova despesa**. Lista e totais são do mês
+  "· fechado" ou "· futuro"); à direita o seletor de mês (botão do mês ▾ e *Hoje* — ver
+  [Seletor de mês](#seletor-de-mês); nada antes de outubro/2026) e o botão dourado **+ Nova despesa**. Lista e totais são do mês
   escolhido; novas despesas são lançadas nesse mês.
 - **Contêiner único centralizado** (largura máxima **960px**, centralizado na área à direita do menu)
   envolve o cabeçalho, a faixa "+ Nova despesa" e o corpo — o cabeçalho termina exatamente na borda
@@ -574,8 +576,9 @@ Tela só **visual**: tudo é calculado com os dados que já existem (nada novo p
 rota ou regra de cálculo alterada). Tema escuro, valores em fonte mono tabular, cores do tema
 (verde `#3ECF8E`, vermelho `#E2604A`, amarelo `#D4A24C`).
 
-- **Seletor de mês** (‹ mês ›) no topo: tudo é do mês escolhido (lembrado ao trocar de aba; nunca
-  antes de outubro/2026). No **celular fica fixo no topo** enquanto você rola, com botões de 44px.
+- **Seletor de mês** (botão do mês ▾ — ver [Seletor de mês](#seletor-de-mês)) no topo: tudo é do mês
+  escolhido (lembrado ao trocar de aba; nunca antes de outubro/2026). No **celular fica fixo no topo**
+  enquanto você rola, com área de toque de 44px.
   Abrir o mês também gera os fixos dele e mostra o aviso discreto "N fixos adicionados".
 - **Card principal (saldo do mês)**: *Saldo final* grande (verde ≥ 0 / vermelho < 0) com o selo
   **▲ Superávit / ▼ Déficit**; abaixo, **uma barra horizontal** — "Você gastou **52%** da receita":
@@ -623,7 +626,7 @@ A rosca é SVG feito à mão — o Recharts foi removido (o bundle caiu de ~590 
 **Início do painel (`MES_INICIAL = "2026-10"`)** — o painel existe só de **outubro/2026**
 em diante. A constante vive em um único lugar por lado: `server/src/utils/mes.js` e
 `client/src/lib/mes.js` (mantenha as duas iguais).
-- O seletor de mês bloqueia a seta "anterior" em outubro/2026 (apagada/desabilitada);
+- O seletor de mês não deixa ir antes de outubro/2026 (no painel esses meses ficam apagados);
   um mês antigo guardado na sessão é ajustado para outubro/2026.
 - A API recusa (`400`) `?mes=` ou `mes` anteriores a `2026-10`; listas e somas **sem**
   `mes` só enxergam lançamentos de outubro/2026 em diante.

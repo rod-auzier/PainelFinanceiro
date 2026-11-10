@@ -1,6 +1,7 @@
 /**
  * MonthPicker — botão com o NOME DO MÊS (borda fina + ▾) que abre um painel flutuante para pular
- * direto para qualquer mês. Usado pelo <SeletorMes> (Despesas, Receitas e Resumo), entre as setas.
+ * direto para qualquer mês. Usado pelo <SeletorMes> (Despesas, Receitas e Resumo) — sozinho, sem
+ * setas laterais: o botão do mês (e o link "Hoje") são a navegação.
  *
  * O PAINEL
  *  - Topo: ‹ ANO › — troca o ano mostrado. ‹ fica desabilitada no ano de MES_INICIAL (2026); › vai até
@@ -16,6 +17,9 @@
  *    ao botão. Meses apagados são pulados.
  *  - CELULAR (< 640px): o painel abre centralizado na tela, com ~90% da largura.
  *
+ * ATALHO NO BOTÃO (painel fechado, botão focado): ← vai ao mês anterior (não antes de MES_INICIAL) e
+ * → ao mês seguinte (só até o mês atual). Fora desses limites a tecla não faz nada.
+ *
  * Props (mesmo contrato do seletor):
  *  - mes      {string}                mês selecionado, "AAAA-MM".
  *  - onChange {(mes: string) => void}  chamado com o mês escolhido.
@@ -24,7 +28,7 @@
  * verde #3ECF8E (`positive`), apagado #3b434b. Só interface — nenhuma regra de dados.
  */
 import { useEffect, useId, useRef, useState } from 'react';
-import { MES_INICIAL, mesAtual, rotuloMes } from '../lib/mes.js';
+import { MES_INICIAL, deslocarMes, mesAtual, rotuloMes } from '../lib/mes.js';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const ANO_INICIAL = Number(MES_INICIAL.slice(0, 4));
@@ -134,8 +138,19 @@ export default function MonthPicker({ mes, onChange }) {
         aria-controls={aberto ? idPainel : undefined}
         aria-label={`Escolher mês — selecionado: ${rotuloMes(mes)}`}
         onClick={() => (aberto ? fechar() : abrir())}
+        // Atalho: ← / → no botão focado (painel fechado) trocam o mês, dentro de MES_INICIAL..mês atual.
+        onKeyDown={(e) => {
+          if (aberto) return;
+          if (e.key === 'ArrowLeft' && mes > MES_INICIAL) {
+            e.preventDefault();
+            onChange(deslocarMes(mes, -1));
+          } else if (e.key === 'ArrowRight' && mes < hoje) {
+            e.preventDefault();
+            onChange(deslocarMes(mes, 1));
+          }
+        }}
         className={[
-          'flex min-h-[44px] min-w-[10.5rem] items-center justify-center gap-1.5 rounded border px-3 text-sm font-medium',
+          'flex min-h-[44px] min-w-[170px] items-center justify-center gap-1.5 rounded border px-3 text-sm font-medium',
           aberto ? 'border-accent text-accent' : 'border-[#2a3139] text-fg hover:border-muted',
         ].join(' ')}
       >
