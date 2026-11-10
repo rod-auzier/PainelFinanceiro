@@ -11,6 +11,7 @@ import { Despesa } from '../models/Despesa.js';
 import { gerarFixosDoMes } from '../services/fixos.js';
 import { cartoesDoMes, garantirCartaoPadrao, linhasVirtuaisCartoes } from '../services/cartao.js';
 import { lerCartaoId } from './cartao.controller.js';
+import { ajustarFixosExistentes, idsDosSeguintes, propagarEdicaoFixo } from '../services/propagacao.js';
 import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMes, lerMesOpcional } from '../utils/mes.js';
 
 /**
@@ -58,7 +59,9 @@ async function lerCartaoDoCorpo(userId, { cartaoId, cartao }) {
  *               (nome)" (`virtual: true`; não são registros salvos). Elas NÃO vêm dentro de
  *               `despesas` — a tela decide onde mostrá-las.
  *               Abrir a tela de Despesas aplica (uma vez) a transição do controle antigo de um
- *               cartão só: cria o cartão padrão "Cartão" se houver dados antigos.
+ *               cartão só: cria o cartão padrão "Cartão" se houver dados antigos. E aplica (uma vez)
+ *               o AJUSTE dos fixos existentes: `fixosAjustados` = quantos receberam o cartão/categoria
+ *               do mês anterior (services/propagacao.js; 0 nas outras vezes).
  * @returns {400} `{ message }` — `mes` fora do formato AAAA-MM ou anterior a MES_INICIAL.
  */
 export async function listarDespesas(req, res) {
@@ -66,15 +69,18 @@ export async function listarDespesas(req, res) {
   if (erro) return res.status(400).json({ message: erro });
 
   await garantirCartaoPadrao(req.userId); // 1ª vez: dados do cartão único antigo → cartão "Cartão"
+  // 1ª vez: copia cartão/categoria do mês anterior para fixos seguintes sem cartão (ANTES de gerar
+  // meses novos, para eles já nascerem certos). Devolve quantos ajustou (0 nas outras vezes).
+  const fixosAjustados = await ajustarFixosExistentes(req.userId);
   const fixosGerados = mes ? await gerarFixosDoMes('despesa', req.userId, mes) : 0;
 
   const filtro = { userId: req.userId, ...(mes ? filtroDoMes(mes) : filtroDesdeInicio()) };
   const despesas = await Despesa.find(filtro).sort({ createdAt: -1 });
-  if (!mes) return res.json({ despesas, fixosGerados });
+  if (!mes) return res.json({ despesas, fixosGerados, fixosAjustados });
 
   // Cartões de crédito do mês: faturas informadas + as partes não detalhadas (linhas virtuais).
   const cartoes = await cartoesDoMes(req.userId, mes);
-  res.json({ despesas, fixosGerados, cartoes, linhasVirtuais: linhasVirtuaisCartoes(mes, cartoes) });
+  res.json({ despesas, fixosGerados, fixosAjustados, cartoes, linhasVirtuais: linhasVirtuaisCartoes(mes, cartoes) });
 }
 
 /**
@@ -145,7 +151,11 @@ export async function criarDespesa(req, res) {
  * @param   {string|null} [req.body.cartaoId] — cartão (ou `null` = nenhum). Só muda se enviado.
  * @param   {boolean} [req.body.cartao]     — (antigo) `true` = cartão padrão. Usado só sem `cartaoId`.
  *          (O status `paga` NUNCA é alterado por aqui — use PATCH /api/despesas/:id.)
- * @returns {200} `{ despesa: {...} }` — documento já com os novos valores.
+ * PROPAGAÇÃO: se a despesa é FIXA, descrição, categoria, cartão e "Repete todo mês" também são
+ * aplicados às cópias dela nos MESES SEGUINTES (valor e paga NÃO) — ver services/propagacao.js.
+ *
+ * @returns {200} `{ despesa: {...}, propagadas: number }` — documento já com os novos valores e
+ *               quantos lançamentos dos meses seguintes receberam a mudança.
  * @returns {400} `{ message }` — `:id` inválido, ou `descricao`/`valor` ausentes/inválidos,
  *               ou `recorrente` não booleano (mesma validação do POST).
  * @returns {404} `{ message }` — despesa inexistente OU de outro usuário
@@ -175,17 +185,21 @@ export async function atualizarDespesa(req, res) {
   const alteracoes = { descricao, categoria, valor: valorNum, ...cartaoLido.campos };
   if (recorrente !== undefined) alteracoes.recorrente = recorrente;
 
-  const despesa = await Despesa.findOneAndUpdate(
+  // `new: false`: pega o documento ANTES da edição (chave antiga e mês, para achar as cópias seguintes).
+  const antes = await Despesa.findOneAndUpdate(
     { _id: req.params.id, userId: req.userId },
     alteracoes,
-    { new: true, runValidators: true }, // `new`: devolve já atualizado
-  );
+    { new: false, runValidators: true },
+  ).lean();
 
-  if (!despesa) {
+  if (!antes) {
     return res.status(404).json({ message: 'despesa não encontrada' });
   }
+  const despesa = await Despesa.findOne({ _id: req.params.id, userId: req.userId });
+  // Mesma operação da edição: leva os campos que se propagam para os meses seguintes.
+  const propagadas = await propagarEdicaoFixo('despesa', req.userId, antes, despesa.toObject());
 
-  return res.json({ despesa });
+  return res.json({ despesa, propagadas });
 }
 
 /**
@@ -251,23 +265,34 @@ export async function marcarTodasPagas(req, res) {
  * @access  Privado
  * @param   {import('express').Request} req
  * @param   {string} req.params.id  — ObjectId da despesa a remover.
- * @returns {204} sem corpo — despesa removida.
- * @returns {400} `{ message }` — se `:id` não for um ObjectId válido.
+ * @param   {string} [req.query.escopo] — só para despesa FIXA: `seguintes` = excluir também as cópias
+ *                                        dela nos MESES SEGUINTES (mesma descrição normalizada). Padrão
+ *                                        (ausente ou `mes`) = só esta. Escolha explícita do usuário.
+ * @returns {200} `{ removidas }` — quantas foram excluídas (1 + as dos meses seguintes, se pedido).
+ * @returns {400} `{ message }` — se `:id` não for um ObjectId válido ou `escopo` inválido.
  * @returns {404} `{ message }` — se a despesa não existe OU não pertence ao usuário.
  */
 export async function removerDespesa(req, res) {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ message: 'id inválido' });
   }
+  const escopo = req.query.escopo ?? 'mes';
+  if (!['mes', 'seguintes'].includes(escopo)) return res.status(400).json({ message: 'escopo inválido' });
 
   const removida = await Despesa.findOneAndDelete({
     _id: req.params.id,
     userId: req.userId,
-  });
+  }).lean();
 
   if (!removida) {
     return res.status(404).json({ message: 'despesa não encontrada' });
   }
 
-  return res.status(204).send();
+  // "Este e os meses seguintes": também as cópias fixas posteriores (nunca meses anteriores).
+  let removidas = 1;
+  if (escopo === 'seguintes' && removida.recorrente) {
+    const ids = await idsDosSeguintes('despesa', req.userId, removida);
+    if (ids.length) removidas += (await Despesa.deleteMany({ _id: { $in: ids }, userId: req.userId })).deletedCount;
+  }
+  return res.json({ removidas });
 }

@@ -10,6 +10,7 @@
 import mongoose from 'mongoose';
 import { Receita } from '../models/Receita.js';
 import { gerarFixosDoMes } from '../services/fixos.js';
+import { idsDosSeguintes, propagarEdicaoFixo } from '../services/propagacao.js';
 import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMesOpcional } from '../utils/mes.js';
 
 /**
@@ -100,7 +101,8 @@ export async function criarReceita(req, res) {
  * @param   {number}  req.body.valor         — quantia recebida, número ≥ 0. Obrigatório.
  * @param   {string}  [req.body.descricao]   — detalhe livre. Opcional.
  * @param   {boolean} [req.body.recorrente]  — "Repete todo mês". Só muda se enviado.
- * @returns {200} `{ receita: {...} }` — documento já com os novos valores.
+ * @returns {200} `{ receita: {...}, propagadas: number }` — documento já com os novos valores e quantos
+ *               lançamentos fixos dos meses seguintes receberam fonte/descrição/"Repete todo mês".
  * @returns {400} `{ message }` — `:id` inválido, ou `fonte`/`valor` ausentes/inválidos,
  *               ou `recorrente` não booleano (mesma validação do POST).
  * @returns {404} `{ message }` — receita inexistente OU de outro usuário
@@ -127,17 +129,22 @@ export async function atualizarReceita(req, res) {
   const alteracoes = { fonte, descricao, valor: valorNum };
   if (recorrente !== undefined) alteracoes.recorrente = recorrente;
 
-  const receita = await Receita.findOneAndUpdate(
+  // `new: false`: pega o documento ANTES da edição (chave antiga e mês, para achar as cópias seguintes).
+  const antes = await Receita.findOneAndUpdate(
     { _id: req.params.id, userId: req.userId },
     alteracoes,
-    { new: true, runValidators: true }, // `new`: devolve já atualizado
-  );
+    { new: false, runValidators: true },
+  ).lean();
 
-  if (!receita) {
+  if (!antes) {
     return res.status(404).json({ message: 'receita não encontrada' });
   }
+  const receita = await Receita.findOne({ _id: req.params.id, userId: req.userId });
+  // PROPAGAÇÃO (mesma operação): fonte, descrição e "Repete todo mês" vão para as cópias fixas dos
+  // MESES SEGUINTES; o valor NÃO (cada mês tem o seu). Ver services/propagacao.js.
+  const propagadas = await propagarEdicaoFixo('receita', req.userId, antes, receita.toObject());
 
-  return res.json({ receita });
+  return res.json({ receita, propagadas });
 }
 
 /**
@@ -147,7 +154,8 @@ export async function atualizarReceita(req, res) {
  * @access  Privado
  * @param   {import('express').Request} req
  * @param   {string} req.params.id  — ObjectId da receita a remover.
- * @returns {204} sem corpo — receita removida.
+ * @param   {string} [req.query.escopo] — receita FIXA: `seguintes` = excluir também as dos meses seguintes.
+ * @returns {200} `{ removidas }` — quantas foram excluídas.
  * @returns {400} `{ message }` — se `:id` não for um ObjectId válido.
  * @returns {404} `{ message }` — se a receita não existe OU não pertence ao usuário.
  */
@@ -156,14 +164,24 @@ export async function removerReceita(req, res) {
     return res.status(400).json({ message: 'id inválido' });
   }
 
+  // `?escopo=seguintes` (só para receita FIXA) = excluir também as cópias dos MESES SEGUINTES.
+  // Padrão: só esta. Escolha explícita do usuário.
+  const escopo = req.query.escopo ?? 'mes';
+  if (!['mes', 'seguintes'].includes(escopo)) return res.status(400).json({ message: 'escopo inválido' });
+
   const removida = await Receita.findOneAndDelete({
     _id: req.params.id,
     userId: req.userId,
-  });
+  }).lean();
 
   if (!removida) {
     return res.status(404).json({ message: 'receita não encontrada' });
   }
 
-  return res.status(204).send();
+  let removidas = 1;
+  if (escopo === 'seguintes' && removida.recorrente) {
+    const ids = await idsDosSeguintes('receita', req.userId, removida);
+    if (ids.length) removidas += (await Receita.deleteMany({ _id: { $in: ids }, userId: req.userId })).deletedCount;
+  }
+  return res.json({ removidas });
 }

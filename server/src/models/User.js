@@ -22,6 +22,8 @@
  *             aba Metas). NÃO entra mais no Total guardado: foi substituído pela soma das CAIXINHAS
  *             (aba Porquinho). O campo é mantido no banco (nunca apagado nem alterado) e é lido uma
  *             única vez, na transição: vira a caixinha "Saldo inicial" (services/caixinhas.js).
+ *  - fixosAjustados : `true` depois do AJUSTE ÚNICO dos fixos existentes (cartão/categoria copiados do mês
+ *             anterior para os fixos seguintes sem cartão — services/propagacao.js). Impede repetir.
  *  - cartoesMigrados : `true` depois que a transição "um cartão → vários cartões" rodou para o usuário
  *             (criação do cartão padrão "Cartão", se havia dados antigos). Impede repetir.
  *  - caixinhasReferencia : LEGADO / IGNORADO. Mês de referência dos saldos das caixinhas, de uma regra
@@ -77,6 +79,8 @@ const userSchema = new mongoose.Schema(
     caixinhasReferencia: { type: String },
     // Marca da transição para vários cartões de crédito (ver services/cartao.js).
     cartoesMigrados: { type: Boolean, default: false },
+    // Marca do ajuste único dos fixos existentes (ver services/propagacao.js).
+    fixosAjustados: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

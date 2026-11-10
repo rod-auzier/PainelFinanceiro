@@ -14,7 +14,11 @@
  *  - editar receita inline (PUT /api/receitas/:id) — a validação em
  *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
  *    ajusta o valor de uma receita fixa copiada;
- *  - excluir receita (DELETE /api/receitas/:id);
+ *  - excluir receita (DELETE /api/receitas/:id). Se for FIXA, pergunta antes (<ConfirmarExclusaoFixo>):
+ *    só este mês (padrão) ou também os meses seguintes (`?escopo=seguintes`);
+ *  - PROPAGAÇÃO DOS FIXOS: editar uma receita fixa aplica fonte, descrição e "Repete todo mês" também
+ *    aos meses SEGUINTES (no servidor, na mesma operação; o valor não). A tela só mostra o aviso
+ *    discreto "Aplicado também a N meses seguintes";
  *  - exibir o total do mês.
  *
  * Responsivo (breakpoint `sm` / `md`, padrões do Tailwind):
@@ -30,6 +34,7 @@ import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
 import { mensagemFixosGerados } from '../lib/mes.js';
 import Money from '../components/Money.jsx';
+import ConfirmarExclusaoFixo from '../components/ConfirmarExclusaoFixo.jsx';
 import ListaLancamentos from '../components/ListaLancamentos.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
 
@@ -64,6 +69,8 @@ export default function Receitas() {
 
   function trocarMes(novo) {
     setAviso('');
+    setAvisoFixos('');
+    setExcluindoFixo(null);
     setMes(novo);
   }
 
@@ -88,9 +95,42 @@ export default function Receitas() {
     }
   }
 
+  const [excluindoFixo, setExcluindoFixo] = useState(null); // fixo aguardando "só este mês / seguintes"
+  const [excluindo, setExcluindo] = useState(false);
+  const [avisoFixos, setAvisoFixos] = useState(''); // "Aplicado também a N meses seguintes" etc.
+
+  /** Texto discreto para quantos lançamentos dos meses seguintes foram alterados/excluídos. */
+  const mesesSeguintes = (n) => `${n} ${n === 1 ? 'mês seguinte' : 'meses seguintes'}`;
+
+  /**
+   * Excluir: lançamento comum sai na hora; FIXO abre a pergunta <ConfirmarExclusaoFixo>
+   * (padrão: só este mês; ou também os meses seguintes).
+   */
   async function excluir(id) {
+    const item = receitas.find((x) => x._id === id);
+    if (item?.recorrente) {
+      setExcluindoFixo(item);
+      return;
+    }
     await api.delete(`/receitas/${id}`);
     recarregar();
+  }
+
+  /** Exclui o fixo com o escopo escolhido; avisa quantos meses seguintes também saíram. */
+  async function excluirFixo(escopo) {
+    const item = excluindoFixo;
+    setExcluindo(true);
+    try {
+      const { data } = await api.delete(`/receitas/${item._id}`, { params: escopo === 'seguintes' ? { escopo } : {} });
+      const extras = (data?.removidas ?? 1) - 1;
+      setAvisoFixos(extras > 0 ? `Excluído também de ${mesesSeguintes(extras)}.` : '');
+      setExcluindoFixo(null);
+      await recarregar();
+    } catch (err) {
+      setAvisoFixos(err.response?.data?.message || 'Não foi possível excluir.');
+    } finally {
+      setExcluindo(false);
+    }
   }
 
   /**
@@ -106,12 +146,14 @@ export default function Receitas() {
     if (rascunho.valor === '' || Number.isNaN(valorNum) || valorNum < 0) {
       throw new Error('Valor deve ser um número maior ou igual a zero.');
     }
-    await api.put(`/receitas/${id}`, {
+    const { data } = await api.put(`/receitas/${id}`, {
       fonte,
       descricao: (rascunho.descricao ?? '').trim(),
       valor: valorNum,
       recorrente: Boolean(rascunho.recorrente),
     });
+    // O servidor já levou a mudança às receitas fixas dos meses seguintes (menos o valor).
+    setAvisoFixos(data.propagadas > 0 ? `Aplicado também a ${mesesSeguintes(data.propagadas)}.` : '');
     await recarregar();
   }
 
@@ -198,6 +240,22 @@ export default function Receitas() {
         <p role="status" className="text-sm text-muted">
           {aviso}
         </p>
+      )}
+      {/* Aviso discreto da propagação dos fixos (editar/excluir/ajuste único). */}
+      {avisoFixos && (
+        <p role="status" className="text-sm text-muted">
+          ↻ {avisoFixos}
+        </p>
+      )}
+
+      {/* Pergunta ao excluir um FIXO: só este mês (padrão) ou também os meses seguintes. */}
+      {excluindoFixo && (
+        <ConfirmarExclusaoFixo
+          nome={excluindoFixo.fonte}
+          ocupado={excluindo}
+          onEscolher={excluirFixo}
+          onCancelar={() => setExcluindoFixo(null)}
+        />
       )}
 
       <ListaLancamentos

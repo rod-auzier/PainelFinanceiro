@@ -19,7 +19,12 @@
  *  - editar despesa inline (PUT /api/despesas/:id) — a validação em
  *    `salvarEdicao` repete a do formulário de criação. É por aqui que se
  *    ajusta o valor de uma conta fixa copiada (ex.: a conta de luz);
- *  - excluir despesa (DELETE /api/despesas/:id);
+ *  - excluir despesa (DELETE /api/despesas/:id). Se for FIXA, pergunta antes (<ConfirmarExclusaoFixo>):
+ *    só este mês (padrão) ou também os meses seguintes (`?escopo=seguintes`);
+ *  - PROPAGAÇÃO DOS FIXOS: editar uma despesa fixa aplica descrição, categoria, cartão e "Repete todo
+ *    mês" também aos meses SEGUINTES (no servidor, na mesma operação; valor e paga não). A tela só
+ *    mostra o aviso discreto "Aplicado também a N meses seguintes". Na 1ª abertura, o servidor faz o
+ *    ajuste único dos fixos já existentes e a tela avisa quantos foram ajustados;
  *  - MARCAR COMO PAGA: caixa de marcação grande em cada despesa (<CaixaCheck>, mesmo estilo das
  *    Metas; verde quando marcada). Atualização OTIMISTA: marca na hora e sincroniza com
  *    PATCH /api/despesas/:id (se falhar, desfaz e avisa). Paga = texto levemente apagado, valor
@@ -55,6 +60,7 @@ import CategoriaPonto from '../components/CategoriaPonto.jsx';
 import SeletorMes from '../components/SeletorMes.jsx';
 import SeletorCategoria from '../components/SeletorCategoria.jsx';
 import GerenciarCategorias from '../components/GerenciarCategorias.jsx';
+import ConfirmarExclusaoFixo from '../components/ConfirmarExclusaoFixo.jsx';
 import { IconeCartao } from '../components/CartaoCard.jsx';
 import CartoesSecao from '../components/CartoesSecao.jsx';
 import SeletorCartao from '../components/SeletorCartao.jsx';
@@ -85,6 +91,12 @@ export default function Despesas() {
     // situação do cartão no mês e a linha calculada "Outras compras no cartão" (ou null).
     (data) => {
       if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados));
+      // Ajuste único dos fixos existentes (cartão/categoria do mês anterior) — só na 1ª abertura.
+      if (data.fixosAjustados > 0) {
+        setAvisoFixos(
+          `${data.fixosAjustados} ${data.fixosAjustados === 1 ? 'lançamento fixo ajustado' : 'lançamentos fixos ajustados'} com o cartão do mês anterior.`,
+        );
+      }
       setSituacoes(data.cartoes?.cartoes ?? []);
       setLinhasVirtuais(data.linhasVirtuais ?? []);
     },
@@ -130,6 +142,8 @@ export default function Despesas() {
 
   function trocarMes(novo) {
     setAviso('');
+    setAvisoFixos('');
+    setExcluindoFixo(null);
     setConfirmandoTodas(false);
     setErroPaga('');
     setMes(novo);
@@ -189,9 +203,42 @@ export default function Despesas() {
     }
   }
 
+  const [excluindoFixo, setExcluindoFixo] = useState(null); // fixo aguardando "só este mês / seguintes"
+  const [excluindo, setExcluindo] = useState(false);
+  const [avisoFixos, setAvisoFixos] = useState(''); // "Aplicado também a N meses seguintes" etc.
+
+  /** Texto discreto para quantos lançamentos dos meses seguintes foram alterados/excluídos. */
+  const mesesSeguintes = (n) => `${n} ${n === 1 ? 'mês seguinte' : 'meses seguintes'}`;
+
+  /**
+   * Excluir: lançamento comum sai na hora; FIXO abre a pergunta <ConfirmarExclusaoFixo>
+   * (padrão: só este mês; ou também os meses seguintes).
+   */
   async function excluir(id) {
+    const item = despesas.find((x) => x._id === id);
+    if (item?.recorrente) {
+      setExcluindoFixo(item);
+      return;
+    }
     await api.delete(`/despesas/${id}`);
     recarregar();
+  }
+
+  /** Exclui o fixo com o escopo escolhido; avisa quantos meses seguintes também saíram. */
+  async function excluirFixo(escopo) {
+    const item = excluindoFixo;
+    setExcluindo(true);
+    try {
+      const { data } = await api.delete(`/despesas/${item._id}`, { params: escopo === 'seguintes' ? { escopo } : {} });
+      const extras = (data?.removidas ?? 1) - 1;
+      setAvisoFixos(extras > 0 ? `Excluído também de ${mesesSeguintes(extras)}.` : '');
+      setExcluindoFixo(null);
+      await recarregar();
+    } catch (err) {
+      setAvisoFixos(err.response?.data?.message || 'Não foi possível excluir.');
+    } finally {
+      setExcluindo(false);
+    }
   }
 
   /**
@@ -207,13 +254,15 @@ export default function Despesas() {
     if (rascunho.valor === '' || Number.isNaN(valorNum) || valorNum < 0) {
       throw new Error('Valor deve ser um número maior ou igual a zero.');
     }
-    await api.put(`/despesas/${id}`, {
+    const { data } = await api.put(`/despesas/${id}`, {
       descricao,
       categoria: rascunho.categoria || NOME_OUTROS,
       valor: valorNum,
       recorrente: Boolean(rascunho.recorrente),
       cartaoId: rascunho.cartao || null, // a coluna "Cartão" guarda o id escolhido ('' = nenhum)
     });
+    // O servidor já levou a mudança aos fixos dos meses seguintes (menos valor e paga).
+    setAvisoFixos(data.propagadas > 0 ? `Aplicado também a ${mesesSeguintes(data.propagadas)}.` : '');
     await recarregar();
   }
 
@@ -429,6 +478,22 @@ export default function Despesas() {
         <p role="status" className="text-sm text-muted">
           {aviso}
         </p>
+      )}
+      {/* Aviso discreto da propagação dos fixos (editar/excluir/ajuste único). */}
+      {avisoFixos && (
+        <p role="status" className="text-sm text-muted">
+          ↻ {avisoFixos}
+        </p>
+      )}
+
+      {/* Pergunta ao excluir um FIXO: só este mês (padrão) ou também os meses seguintes. */}
+      {excluindoFixo && (
+        <ConfirmarExclusaoFixo
+          nome={excluindoFixo.descricao}
+          ocupado={excluindo}
+          onEscolher={excluirFixo}
+          onCancelar={() => setExcluindoFixo(null)}
+        />
       )}
 
       {/* Filtro rápido por cartão: "Todas" ou um cartão (as despesas dele + a linha calculada dele). */}
