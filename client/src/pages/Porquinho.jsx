@@ -8,22 +8,18 @@
  * Responsabilidades:
  *  - carregar, numa chamada só, as caixinhas E o total guardado (GET /api/caixinhas). Na 1ª vez,
  *    o servidor transforma o antigo saldo inicial numa caixinha "Saldo inicial" (o total não muda);
- *  - card "Total guardado" (<GuardadoCard>): total = soma das caixinhas + (receitas − despesas dos
- *    meses fechados), com a composição, a média mensal e o mês em andamento;
+ *  - card "Total guardado" (<GuardadoCard>): total = SOMA DAS CAIXINHAS (só isso; fechar um mês
+ *    não muda o total), com a média mensal e o mês em andamento como informação ao lado;
  *  - seção "Caixinhas": barra empilhada com a proporção de cada uma (<BarraCaixinhas>), lista da
  *    maior para a menor (<CaixinhaItem>, 2 colunas no desktop) com editar/excluir, formulário
  *    "Adicionar caixinha" (Enter também adiciona) e estado vazio amigável;
- *  - MÊS DE REFERÊNCIA dos saldos: seletor "Os valores das caixinhas são o saldo de: [mês]" (de
- *    out/2026 até o mês atual) → PATCH /api/caixinhas/referencia, que devolve o total recalculado.
- *    Os meses fechados ANTES da referência já estão nos valores e não são somados de novo;
  *  - ATUALIZAÇÃO OTIMISTA em criar, editar e excluir: a tela muda na hora e a API sincroniza; se a
  *    API falhar, volta ao estado anterior e mostra o erro. O total é DERIVADO da lista local
- *    (soma das caixinhas + resultado dos meses fechados), então acompanha cada mudança na hora.
+ *    (soma das caixinhas — a mesma regra do servidor), então acompanha cada mudança na hora.
  *
  * Responsivo: uma coluna no celular; botões e inputs com ≥ 44px; inputs em 16px (sem zoom no iOS).
  */
 import { useMemo, useState } from 'react';
-import { MES_INICIAL, deslocarMes, mesAtualDoPainel, rotuloMes, rotuloMesCurto } from '../lib/mes.js';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import GuardadoCard from '../components/GuardadoCard.jsx';
@@ -43,13 +39,6 @@ const INPUT =
 
 const mensagemDeErro = (err, padrao) => err.response?.data?.message || padrao;
 
-/** Meses que podem ser referência: de MES_INICIAL (out/2026) até o mês atual, do mais novo ao mais antigo. */
-function mesesDeReferencia() {
-  const lista = [];
-  for (let m = mesAtualDoPainel(); m >= MES_INICIAL; m = deslocarMes(m, -1)) lista.push(m);
-  return lista;
-}
-
 export default function Porquinho() {
   const [guardado, setGuardado] = useState(null); // total guardado (formato de GET /api/guardado)
   const [limite, setLimite] = useState(20);
@@ -65,22 +54,6 @@ export default function Porquinho() {
   const [nome, setNome] = useState('');
   const [valor, setValor] = useState('');
   const [erroAcao, setErroAcao] = useState('');
-  const [salvandoReferencia, setSalvandoReferencia] = useState(false);
-  const referencia = guardado?.caixinhasReferencia ?? MES_INICIAL; // mês em que os saldos foram conferidos
-
-  /** Troca o mês de referência; o servidor devolve o total já recalculado (e as metas reavaliadas). */
-  async function trocarReferencia(mes) {
-    setErroAcao('');
-    setSalvandoReferencia(true);
-    try {
-      const { data } = await api.patch('/caixinhas/referencia', { mes });
-      setGuardado(data.guardado);
-    } catch (err) {
-      setErroAcao(mensagemDeErro(err, 'Não foi possível salvar o mês de referência.'));
-    } finally {
-      setSalvandoReferencia(false);
-    }
-  }
 
   // Derivados da lista local (seguem as mudanças otimistas na hora).
   const cores = useMemo(() => coresDasCaixinhas(caixinhas), [caixinhas]); // pela ordem de criação
@@ -173,29 +146,6 @@ export default function Porquinho() {
               </p>
             </div>
 
-            {/* Mês de referência dos saldos: meses fechados ANTES dele já estão nos valores. */}
-            <div className="rounded border border-border bg-bg p-3">
-              <label className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
-                <span>Os valores das caixinhas são o saldo de:</span>
-                <select
-                  value={referencia}
-                  disabled={salvandoReferencia || !guardado}
-                  onChange={(e) => trocarReferencia(e.target.value)}
-                  className="min-h-[44px] rounded border border-border bg-surface px-3 text-base capitalize text-fg focus:border-accent focus:outline-none disabled:opacity-60 sm:w-56"
-                >
-                  {mesesDeReferencia().map((m) => (
-                    <option key={m} value={m}>
-                      {rotuloMes(m)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="mt-2 text-xs text-muted">
-                Escolha o mês em que você conferiu estes saldos. Meses fechados antes dele já estão incluídos nos
-                valores e não são somados de novo.
-              </p>
-            </div>
-
             {caixinhas.length === 0 ? (
               /* Estado vazio amigável */
               <div className="rounded border border-dashed border-border bg-bg p-6 text-center">
@@ -217,7 +167,6 @@ export default function Porquinho() {
                       cor={cores.get(c._id)}
                       onSalvar={salvar}
                       onExcluir={excluir}
-                      lembrete={`Confira o mês de referência: os valores devem ser o saldo de ${rotuloMesCurto(referencia)}.`}
                       pendente={String(c._id).startsWith('tmp-')} // ainda sem id real
                     />
                   ))}

@@ -6,8 +6,6 @@
  *   POST   /api/caixinhas      -> criarCaixinha     { nome, valor }
  *   PATCH  /api/caixinhas/:id  -> atualizarCaixinha { nome?, valor? }
  *   DELETE /api/caixinhas/:id  -> removerCaixinha
- *   GET    /api/caixinhas/referencia -> obterReferencia    (mês em que os saldos foram conferidos)
- *   PATCH  /api/caixinhas/referencia -> definirReferencia  { mes } (devolve o total recalculado)
  */
 import { Router } from 'express';
 import { authRequired } from '../middlewares/auth.js';
@@ -17,8 +15,6 @@ import {
   criarCaixinha,
   atualizarCaixinha,
   removerCaixinha,
-  obterReferencia,
-  definirReferencia,
 } from '../controllers/caixinha.controller.js';
 
 const router = Router();
@@ -26,9 +22,6 @@ const router = Router();
 router.use(authRequired);
 
 router.get('/', asyncHandler(listarCaixinhas));
-// '/referencia' vem ANTES de '/:id', senão o Express trataria "referencia" como um id.
-router.get('/referencia', asyncHandler(obterReferencia));
-router.patch('/referencia', asyncHandler(definirReferencia));
 router.post('/', asyncHandler(criarCaixinha));
 router.patch('/:id', asyncHandler(atualizarCaixinha));
 router.delete('/:id', asyncHandler(removerCaixinha));

@@ -22,12 +22,11 @@
  *             aba Metas). NÃO entra mais no Total guardado: foi substituído pela soma das CAIXINHAS
  *             (aba Porquinho). O campo é mantido no banco (nunca apagado nem alterado) e é lido uma
  *             única vez, na transição: vira a caixinha "Saldo inicial" (services/caixinhas.js).
- *  - caixinhasReferencia : "AAAA-MM" — mês em que o usuário conferiu os saldos das caixinhas. Os meses
- *             fechados ANTES dele já estão nesses valores e não entram de novo no Total guardado (ver
- *             services/guardado.js). Padrão "2026-10" (MES_INICIAL), o que mantém o total de quem já
- *             existia exatamente igual. Editável na aba Porquinho (PATCH /api/caixinhas/referencia).
  *  - cartoesMigrados : `true` depois que a transição "um cartão → vários cartões" rodou para o usuário
  *             (criação do cartão padrão "Cartão", se havia dados antigos). Impede repetir.
+ *  - caixinhasReferencia : LEGADO / IGNORADO. Mês de referência dos saldos das caixinhas, de uma regra
+ *             anterior do Total guardado. Hoje o total é só a soma das caixinhas, então o campo NÃO é
+ *             lido em lugar nenhum; fica no schema apenas para não perder o dado já gravado.
  *  - caixinhasMigradas : `true` depois que essa transição rodou para o usuário — impede que a
  *             caixinha "Saldo inicial" seja criada de novo. Ausente/`false` em quem ainda não abriu
  *             o app desde a mudança.
@@ -74,8 +73,8 @@ const userSchema = new mongoose.Schema(
     },
     // Marca da transição saldo inicial → caixinhas (ver services/caixinhas.js).
     caixinhasMigradas: { type: Boolean, default: false },
-    // Mês de referência dos saldos das caixinhas (ver o comentário do topo).
-    caixinhasReferencia: { type: String, default: '2026-10', match: /^\d{4}-(0[1-9]|1[0-2])$/ },
+    // LEGADO / IGNORADO (ver o comentário do topo): mantido só para não perder o dado gravado.
+    caixinhasReferencia: { type: String },
     // Marca da transição para vários cartões de crédito (ver services/cartao.js).
     cartoesMigrados: { type: Boolean, default: false },
   },

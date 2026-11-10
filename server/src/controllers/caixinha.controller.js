@@ -7,9 +7,7 @@
 import mongoose from 'mongoose';
 import { Caixinha, NOME_MAX, NOME_MIN } from '../models/Caixinha.js';
 import { LIMITE_CAIXINHAS, garantirMigracaoCaixinhas } from '../services/caixinhas.js';
-import { arredondar, calcularESincronizar, referenciaDasCaixinhas } from '../services/guardado.js';
-import { User } from '../models/User.js';
-import { lerMes, mesAtual } from '../utils/mes.js';
+import { arredondar, calcularESincronizar } from '../services/guardado.js';
 
 /** Valida o nome. @returns {string|null} mensagem de erro ou null */
 function erroNome(nome) {
@@ -130,40 +128,4 @@ export async function removerCaixinha(req, res) {
   const removida = await Caixinha.findOneAndDelete({ _id: req.params.id, userId: req.userId });
   if (!removida) return res.status(404).json({ message: 'caixinha não encontrada' });
   return res.status(204).send();
-}
-
-/**
- * Mês de REFERÊNCIA dos saldos das caixinhas (o mês em que o usuário os conferiu). Os meses fechados
- * antes dele já estão dentro dos valores das caixinhas e não são somados de novo ao Total guardado.
- *
- * @route   GET /api/caixinhas/referencia
- * @access  Privado
- * @returns {200} `{ referencia: "AAAA-MM" }` (padrão "2026-10" para quem nunca escolheu).
- */
-export async function obterReferencia(req, res) {
-  const usuario = await User.findById(req.userId).select('caixinhasReferencia').lean();
-  res.json({ referencia: referenciaDasCaixinhas(usuario) });
-}
-
-/**
- * Define o mês de referência das caixinhas e devolve o Total guardado recalculado (e as metas já
- * sincronizadas com ele). Só atua sobre o usuário do token.
- *
- * @route   PATCH /api/caixinhas/referencia
- * @access  Privado
- * @param   {string} req.body.mes  "AAAA-MM", não anterior a 2026-10 nem posterior ao mês atual
- *                                 (fuso America/Fortaleza).
- * @returns {200} `{ referencia, guardado }` (`guardado` no mesmo formato de GET /api/guardado).
- * @returns {400} `{ message }` — formato inválido, antes de 2026-10 ou depois do mês atual.
- */
-export async function definirReferencia(req, res) {
-  const { mes, erro } = lerMes(req.body?.mes); // formato AAAA-MM e não anterior a MES_INICIAL
-  if (erro) return res.status(400).json({ message: erro });
-  if (mes > mesAtual()) {
-    return res.status(400).json({ message: 'O mês de referência não pode ser posterior ao mês atual.' });
-  }
-
-  await User.updateOne({ _id: req.userId }, { $set: { caixinhasReferencia: mes } });
-  const guardado = await calcularESincronizar(req.userId); // o total mudou: metas reavaliadas
-  return res.json({ referencia: mes, guardado });
 }

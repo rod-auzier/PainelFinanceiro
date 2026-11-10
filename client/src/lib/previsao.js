@@ -7,11 +7,10 @@
  * meses FECHADOS, sem o mês atual — ver server/src/services/guardado.js).
  *
  * Conta, para uma meta com valor ainda não atingido:
- *   faltam   = valorAlvo − total guardado
- *   meses    = ceil(faltam ÷ média)
+ *   faltam   = valorAlvo − total guardado      (PONTO DE PARTIDA: total = soma das caixinhas)
+ *   meses    = ceil(faltam ÷ média)            (RITMO: média dos meses fechados)
  *   previsão = mês atual + meses
- * O total guardado só cresce quando um mês FECHA, então o primeiro fechamento é o mês atual + 1:
- * se a média cobrir o que falta em 1 mês, a previsão é o mês seguinte ao atual (nunca o atual).
+ * Mesmo que a média cubra o que falta em 1 mês, a previsão é o mês seguinte ao atual (nunca o atual).
  */
 import { deslocarMes } from './mes.js';
 

@@ -6,7 +6,7 @@
  * nem apaga metas de outro.
  *
  * Metas podem ter um `valorAlvo` (R$). Nesse caso, quando o TOTAL GUARDADO
- * (soma das caixinhas + receitas − despesas dos MESES FECHADOS, ver services/guardado.js) atinge o
+ * (soma das caixinhas, ver services/guardado.js) atinge o
  * alvo, a meta é marcada como concluída automaticamente. Essa sincronização
  * roda ao listar, criar e atualizar metas, então as respostas já refletem o
  * estado atual.

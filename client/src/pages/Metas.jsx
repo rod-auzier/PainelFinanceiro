@@ -3,8 +3,9 @@
  *
  * Responsabilidades:
  *  - mostrar, num card COMPACTO no topo, o "Total guardado" e a "Média guardada por mês" (vêm junto
- *    de GET /api/metas), com o link "Ver Porquinho". O total = soma das caixinhas + (receitas −
- *    despesas dos meses fechados); a composição completa e as caixinhas ficam na aba Porquinho
+ *    de GET /api/metas), com o link "Ver Porquinho". O total = SOMA DAS CAIXINHAS (calculado
+ *    no servidor, services/guardado.js); é o ponto de partida do progresso e da previsão das metas.
+ *    As caixinhas ficam na aba Porquinho
  *    (o antigo campo "Saldo inicial guardado" deu lugar às caixinhas);
  *  - listar as metas (GET /api/metas via useRecurso). Cada meta pode ter um
  *    valor (R$); as que têm mostram barra de progresso, porcentagem e
