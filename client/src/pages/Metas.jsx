@@ -9,7 +9,7 @@
  *    (o antigo campo "Saldo inicial guardado" deu lugar às caixinhas);
  *  - listar as metas (GET /api/metas via useRecurso). Cada meta pode ter um
  *    valor (R$); as que têm mostram barra de progresso, porcentagem e
- *    "R$ X de R$ Y" (progresso = min(total guardado / valor, 100%));
+ *    "R$ saldo / R$ valor" (progresso = min(saldo acompanhado / valor, 100%) — caixinha ou total guardado);
  *  - criar meta (POST /api/metas) com título e valor OPCIONAL — botão
  *    "Adicionar" ou Enter (o campo está num <form>);
  *  - editar título e valor de uma meta existente (PATCH /api/metas/:id) — lápis;
@@ -27,6 +27,12 @@
  *    fechado não mostra nada. Cálculo em lib/previsao.js, com a média que a API devolve;
  *  - mensagem amigável quando não há metas.
  *
+ *  - META VINCULADA A CAIXINHA: cada meta acompanha o TOTAL GUARDADO (padrão; todas as antigas) ou uma
+ *    CAIXINHA específica (`caixinhaId`). O servidor devolve em cada meta o `acompanhamento` pronto (saldo,
+ *    progresso e previsão — services/metas.js) e a lista de caixinhas; aqui só exibimos e trocamos: no
+ *    formulário (Total guardado | Caixinha específica) e no "trocar ▾" do card. A previsão de uma meta
+ *    ligada a caixinha é APROXIMADA ("~"), porque a média mensal é do painel inteiro;
+ *
  * Não recebe props. Autenticação já garantida pelo <Layout>.
  * Cores/tipografia: tokens do tema (ver `src/index.css`).
  */
@@ -36,8 +42,9 @@ import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import Money from '../components/Money.jsx';
 import MetaItem from '../components/MetaItem.jsx';
+import SeletorAcompanhamento from '../components/SeletorAcompanhamento.jsx';
 import { ordenarMetas } from '../lib/metas.js';
-import { textoPrevisao } from '../lib/previsao.js';
+import { coresDasCaixinhas } from '../lib/caixinhas.js';
 
 // 16px (`text-base`) evita o zoom automático do iOS; 44px = área de toque.
 const INPUT =
@@ -52,6 +59,8 @@ export default function Metas() {
   const [guardado, setGuardado] = useState(null); // { totalCaixinhas, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }
   const [titulo, setTitulo] = useState('');
   const [valor, setValor] = useState('');
+  const [vinculo, setVinculo] = useState(''); // nova meta: '' = total guardado; senão id da caixinha
+  const [caixinhas, setCaixinhas] = useState([]); // caixinhas do usuário (vêm junto de GET /api/metas)
   const [adicionando, setAdicionando] = useState(false);
   const [erroAcao, setErroAcao] = useState('');
 
@@ -74,6 +83,7 @@ export default function Metas() {
     (data) => {
       if (data.guardado) setGuardado(data.guardado);
       else carregarGuardado();
+      setCaixinhas(data.caixinhas ?? []);
     },
   );
 
@@ -98,6 +108,7 @@ export default function Metas() {
       }
       corpo.valorAlvo = n;
     }
+    if (vinculo) corpo.caixinhaId = vinculo; // meta que acompanha uma caixinha específica
 
     setErroAcao('');
     setAdicionando(true);
@@ -106,6 +117,7 @@ export default function Metas() {
       setMetas((atual) => [data.meta, ...atual]); // já vem sincronizada (pode nascer concluída)
       setTitulo('');
       setValor('');
+      setVinculo('');
     } catch (err) {
       setErroAcao(mensagemDeErro(err, 'Não foi possível adicionar a meta.'));
     } finally {
@@ -146,22 +158,30 @@ export default function Metas() {
    * <MetaItem> mostra a mensagem dentro do item. A resposta já vem sincronizada
    * (se o total atinge o novo valor, a meta volta concluída).
    */
-  async function salvarEdicao(meta, { titulo: novoTitulo, valorAlvo }) {
-    const { data } = await api.patch(`/metas/${meta._id}`, { titulo: novoTitulo, valorAlvo });
+  async function salvarEdicao(meta, { titulo: novoTitulo, valorAlvo, caixinhaId }) {
+    const { data } = await api.patch(`/metas/${meta._id}`, { titulo: novoTitulo, valorAlvo, caixinhaId: caixinhaId || null });
     setMetas((atual) => atual.map((m) => (m._id === meta._id ? data.meta : m)));
   }
 
-  const total = guardado?.total ?? 0;
+  /** "trocar ▾" do card: muda SÓ o que a meta acompanha ('' = total guardado). A resposta já vem recalculada. */
+  async function trocarCaixinha(meta, caixinhaId) {
+    const { data } = await api.patch(`/metas/${meta._id}`, { caixinhaId: caixinhaId || null });
+    setMetas((atual) => atual.map((m) => (m._id === meta._id ? data.meta : m)));
+  }
+
+  // Cor de cada caixinha (pela ordem de criação — a mesma da aba Porquinho).
+  const cores = useMemo(() => coresDasCaixinhas(caixinhas), [caixinhas]);
 
   const renderItem = (m) => (
     <MetaItem
       key={m._id}
-      meta={m}
-      total={total}
-      previsao={textoPrevisao(m, guardado)} // "No ritmo atual, chega em …" (ou null)
+      meta={m} // traz `acompanhamento` (saldo, progresso, previsão) calculado no servidor
+      caixinhas={caixinhas}
+      cores={cores}
       onAlternar={alternar}
       onExcluir={excluir}
       onSalvarEdicao={salvarEdicao}
+      onTrocarCaixinha={trocarCaixinha}
     />
   );
 
@@ -211,7 +231,8 @@ export default function Metas() {
       )}
 
       {/* Título + valor opcional + botão. Enter dentro de um input envia o <form>. */}
-      <form onSubmit={adicionar} className="flex flex-col gap-3 sm:flex-row">
+      <form onSubmit={adicionar} className="space-y-3">
+       <div className="flex flex-col gap-3 sm:flex-row">
         <input
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
@@ -237,6 +258,12 @@ export default function Metas() {
         >
           {adicionando ? 'Adicionando…' : 'Adicionar'}
         </button>
+       </div>
+        {/* O que a nova meta acompanha (padrão: total guardado). Só faz diferença em meta com valor. */}
+        <div className="flex flex-col gap-1 sm:max-w-md">
+          <span className="text-xs text-muted">Acompanha</span>
+          <SeletorAcompanhamento valor={vinculo} onChange={setVinculo} caixinhas={caixinhas} cores={cores} />
+        </div>
       </form>
 
       {erroAcao && (

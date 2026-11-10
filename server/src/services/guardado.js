@@ -47,6 +47,7 @@ import { garantirMigracaoCaixinhas, somarCaixinhas } from './caixinhas.js';
 import { garantirFixosAteMesAtual } from './fixos.js';
 import { somarMesesFechados, somarValor } from './totais.js';
 import { totalDespesasCorrigido } from './cartao.js';
+import { caixinhasDoUsuario, saldoDaMeta } from './metas.js';
 import { MES_INICIAL, mesAtual, mesSeguinte, mesesEntre } from '../utils/mes.js';
 
 /** Arredonda para centavos (evita 4999.999999… em somas de ponto flutuante). */
@@ -125,17 +126,26 @@ export async function calcularGuardado(userId, hoje = mesAtual()) {
  * @returns {Promise<void>}
  */
 export async function sincronizarMetas(userId, total) {
-  // 1) Alvo alcançado agora → conclui e marca que o gatilho já disparou.
-  await Meta.updateMany(
-    { userId, valorAlvo: { $gt: 0, $lte: total }, alvoAtingido: false },
-    { $set: { concluida: true, alvoAtingido: true } },
-  );
+  // Cada meta compara o alvo com o SALDO QUE ELA ACOMPANHA: a caixinha vinculada (se ainda existir) ou o
+  // total guardado — o mesmo cálculo da barra (services/metas.js → saldoDaMeta).
+  const [metas, caixinhas] = await Promise.all([
+    Meta.find({ userId, valorAlvo: { $gt: 0 } }).select('valorAlvo alvoAtingido caixinhaId').lean(),
+    caixinhasDoUsuario(userId),
+  ]);
+  const porId = new Map(caixinhas.map((c) => [String(c._id), c]));
 
-  // 2) Total caiu abaixo do alvo → rearma o gatilho (sem desmarcar a meta).
-  await Meta.updateMany(
-    { userId, valorAlvo: { $gt: total }, alvoAtingido: true },
-    { $set: { alvoAtingido: false } },
-  );
+  const operacoes = [];
+  for (const m of metas) {
+    const { saldoAtual } = saldoDaMeta(m, total, porId);
+    if (!m.alvoAtingido && saldoAtual >= m.valorAlvo) {
+      // 1) Alvo alcançado agora → conclui e marca que o gatilho já disparou.
+      operacoes.push({ updateOne: { filter: { _id: m._id, userId }, update: { $set: { concluida: true, alvoAtingido: true } } } });
+    } else if (m.alvoAtingido && saldoAtual < m.valorAlvo) {
+      // 2) Saldo caiu abaixo do alvo → rearma o gatilho (sem desmarcar a meta).
+      operacoes.push({ updateOne: { filter: { _id: m._id, userId }, update: { $set: { alvoAtingido: false } } } });
+    }
+  }
+  if (operacoes.length) await Meta.bulkWrite(operacoes);
 }
 
 /**

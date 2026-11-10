@@ -16,6 +16,10 @@
  *                o total alcança `valorAlvo` e a meta é marcada sozinha. Serve para NÃO
  *                remarcar uma meta que o usuário desmarcou à mão. É "rearmado" (volta a
  *                `false`) se o total cair abaixo do alvo ou se o valorAlvo mudar.
+ *  - caixinhaId : OPCIONAL — a CAIXINHA (aba Porquinho) que a meta acompanha. Ausente/null = acompanha o
+ *                TOTAL GUARDADO (como todas as metas antigas, que não têm o campo e não são migradas). Se a
+ *                caixinha for excluída, a meta volta a usar o total — o id que não existe mais é tratado
+ *                como null na leitura (services/metas.js). Validado no controller: só caixinha do usuário.
  *  - createdAt : data de criação, gerada pelo `timestamps` do Mongoose (que
  *                também cria `updatedAt`). A listagem usa para ordenar.
  */
@@ -49,6 +53,12 @@ const metaSchema = new mongoose.Schema(
     alvoAtingido: {
       type: Boolean,
       default: false,
+    },
+    // Caixinha acompanhada (opcional; ver o comentário do topo).
+    caixinhaId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Caixinha',
+      default: null,
     },
   },
   { timestamps: true },

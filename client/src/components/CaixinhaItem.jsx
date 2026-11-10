@@ -14,7 +14,9 @@
  * Estados internos:
  *  - edição: nome e valor viram inputs (Salvar / Cancelar; Enter salva, Esc cancela), sem
  *    recarregar a tela;
- *  - confirmação de exclusão na própria linha ("Excluir 'X'? R$ Y sai do total guardado.").
+ *  - confirmação de exclusão na própria linha ("Excluir 'X'? R$ Y sai do total guardado."), com o aviso
+ *    "N metas acompanham esta caixinha e voltarão a usar o total guardado." quando houver
+ *    (`caixinha.metasVinculadas`, vindo de GET /api/caixinhas).
  * Botões com 44×44px de toque; inputs em 16px (sem zoom no iOS).
  */
 import { useState } from 'react';
@@ -169,6 +171,14 @@ export default function CaixinhaItem({ caixinha, cor, onSalvar, onExcluir, pende
             Excluir <span className="font-medium">"{caixinha.nome}"</span>?{' '}
             <Money value={caixinha.valor} /> sai do total guardado.
           </p>
+          {/* Metas que acompanham esta caixinha voltam a usar o total guardado (nada é apagado). */}
+          {caixinha.metasVinculadas > 0 && (
+            <p className="text-xs text-accent">
+              {caixinha.metasVinculadas === 1
+                ? '1 meta acompanha esta caixinha e voltará a usar o total guardado.'
+                : `${caixinha.metasVinculadas} metas acompanham esta caixinha e voltarão a usar o total guardado.`}
+            </p>
+          )}
           <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
             <button
               type="button"

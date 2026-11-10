@@ -6,6 +6,7 @@
  */
 import mongoose from 'mongoose';
 import { Caixinha, NOME_MAX, NOME_MIN } from '../models/Caixinha.js';
+import { Meta } from '../models/Meta.js';
 import { LIMITE_CAIXINHAS, garantirMigracaoCaixinhas } from '../services/caixinhas.js';
 import { arredondar, calcularESincronizar } from '../services/guardado.js';
 
@@ -33,13 +34,23 @@ function erroValor(valor) {
  *
  * @route   GET /api/caixinhas
  * @access  Privado
- * @returns {200} `{ caixinhas: Array<{ _id, nome, valor, createdAt, updatedAt }>, limite, guardado }`
+ * @returns {200} `{ caixinhas: Array<{ _id, nome, valor, createdAt, updatedAt, metasVinculadas }>, limite, guardado }`
+ *               `metasVinculadas` = quantas metas acompanham a caixinha (aviso antes de excluí-la).
  *               caixinhas em ordem de criação (a tela ordena da maior para a menor);
  *               `guardado` = mesmo formato de GET /api/guardado.
  */
 export async function listarCaixinhas(req, res) {
   await garantirMigracaoCaixinhas(req.userId);
-  const caixinhas = await Caixinha.find({ userId: req.userId }).sort({ createdAt: 1, _id: 1 });
+  const [lista, vinculos] = await Promise.all([
+    Caixinha.find({ userId: req.userId }).sort({ createdAt: 1, _id: 1 }).lean(),
+    // Quantas METAS acompanham cada caixinha (para o aviso antes de excluir uma caixinha).
+    Meta.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(req.userId), caixinhaId: { $ne: null } } },
+      { $group: { _id: '$caixinhaId', n: { $sum: 1 } } },
+    ]),
+  ]);
+  const metasPorCaixinha = new Map(vinculos.map((v) => [String(v._id), v.n]));
+  const caixinhas = lista.map(({ origem: _o, ...c }) => ({ ...c, metasVinculadas: metasPorCaixinha.get(String(c._id)) ?? 0 })); // eslint-disable-line no-unused-vars
 
   let guardado = null;
   try {

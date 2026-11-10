@@ -81,7 +81,7 @@ Finanças/
 │       │   ├── mes.js          # MES_INICIAL + helpers de mês (AAAA-MM), rótulos e aviso de fixos gerados
 │       │   ├── caixinhas.js    # caixinhas: cores pela ordem de criação, soma, ordenação, validação
 │       │   ├── constants.js    # categorias: padrão (provisórias), PALETA_CORES, "Outros", validação do nome
-│       │   ├── previsao.js     # previsão das metas ("No ritmo atual, chega em mar/2027") — funções puras
+│       │   ├── previsao.js     # TEXTO da previsão das metas ("…chega em mar/2027", "~" se aproximada); a conta é no servidor
 │       ├── hooks/
 │       │   ├── useRecurso.js   # hook genérico de carregamento de lista da API
 │       │   └── useMesSelecionado.js # mês escolhido no seletor (guardado no sessionStorage)
@@ -146,7 +146,7 @@ Finanças/
         │   ├── Despesa.js      # { userId, descricao, categoria, valor, recorrente, paga, cartao (antigo), cartaoId, createdAt }
         │   ├── Cartao.js       # { userId, nome (2–24, único), cor, padrao } — cartões de crédito (até 5)
         │   ├── FaturaCartao.js # { userId, cartaoId, mes "AAAA-MM", valor, paga } — 1 por cartão e mês
-        │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, createdAt }
+        │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, caixinhaId?, createdAt }
         │   ├── Categoria.js    # { userId, nome (2–24, único por usuário sem diferenciar maiúsculas), cor, createdAt }
         │   └── FixosGerados.js # marcador (usuário, tipo, mês) da geração automática de fixos
         ├── middlewares/
@@ -162,7 +162,8 @@ Finanças/
         │   ├── guardado.js     # total guardado (= soma das caixinhas) + média dos meses fechados + parcial do mês + conclusão automática das metas
         │   ├── caixinhas.js    # transição do saldo inicial → caixinha "Saldo inicial" (1 vez) + soma
         │   ├── categorias.js   # categorias padrão no 1º acesso, "Outros" protegida, contagem de despesas por categoria
-        │   └── cartao.js       # ★ cálculo CENTRAL dos cartões: max(fatura, detalhado) por cartão, linhas virtuais, total corrigido, transição
+        │   ├── cartao.js       # ★ cálculo CENTRAL dos cartões: max(fatura, detalhado) por cartão, linhas virtuais, total corrigido, transição
+        │   └── metas.js        # ★ situação de cada meta: caixinha ou total guardado, saldo, progresso, previsão (aproximada)
         ├── controllers/
         │   ├── auth.controller.js     # register, login, me
         │   ├── receita.controller.js  # listar, criar, atualizar, remover (por userId)
@@ -822,22 +823,37 @@ O antigo campo "Saldo inicial guardado" e o botão *Salvar saldo* saíram desta 
   entram na média.
 
 **Metas**
-- **Adicionar**: título + **Valor (R$) opcional** — botão *Adicionar* ou **Enter**.
-  Sem valor, a meta é um checklist comum.
-- **Meta com valor**: barra de progresso **verde**, porcentagem e "R$ X de R$ Y".
-  Progresso = `min(total guardado ÷ valor, 100%)`.
+- **Adicionar**: título + **Valor (R$) opcional** — botão *Adicionar* ou **Enter** — e o que a meta
+  **acompanha**: seletor **Total guardado | Caixinha específica** (padrão: Total guardado; ao escolher
+  "Caixinha específica" aparece a lista das suas caixinhas). Sem caixinhas, só existe o total. Sem valor,
+  a meta é um checklist comum.
+- **Meta vinculada a caixinha**: cada meta acompanha o **total guardado** (soma das caixinhas — padrão e
+  o caso de todas as metas antigas, que não foram migradas) **ou uma caixinha específica** (campo
+  `caixinhaId`). No card, abaixo do título: "**Acompanhando:**" + pílula com a bolinha e o nome da caixinha
+  (ou "Total guardado (todas as caixinhas)") e o link dourado **trocar ▾**, que troca só esse campo ali
+  mesmo. A caixinha precisa ser do mesmo usuário (senão `400`). Se a caixinha for **excluída**, as metas
+  ligadas a ela **voltam a usar o total guardado** automaticamente (o id que não existe mais é tratado
+  como vazio na leitura, sem reescrever a meta) — e o Porquinho avisa antes de excluir: "N metas
+  acompanham esta caixinha e voltarão a usar o total guardado."
+- **Meta com valor**: barra de progresso **verde**, "**R$ saldo / R$ valor**" e porcentagem, onde
+  **saldo** = o valor da caixinha acompanhada ou o total guardado. Progresso = `min(saldo ÷ valor, 100%)`.
 - **Previsão** (texto pequeno, cor secundária, abaixo da barra): em cada meta **com valor ainda não
   atingido**, "**No ritmo atual, chega em mar/2027**" (mês abreviado em pt-BR). Conta:
-  `faltam = valor − total guardado` (ponto de partida: a soma das caixinhas), `meses = ceil(faltam ÷
-  média)` (ritmo: a média dos meses fechados), `previsão = mês atual + meses` (nunca o mês atual). Média **zero ou negativa** → "Sem previsão no ritmo atual". **Nenhum mês
-  fechado** ainda → sem previsão. Metas já atingidas/concluídas ou sem valor não mostram previsão.
-  Cálculo na tela, em `client/src/lib/previsao.js`, a partir da média que a API devolve.
-- **Conclusão automática**: quando o total guardado atinge o valor, a meta é marcada
+  `faltam = valor − saldo` (ponto de partida: a caixinha da meta ou o total guardado), `meses = ceil(faltam
+  ÷ média)` (ritmo: a **mesma** média dos meses fechados de sempre), `previsão = mês atual + meses` (nunca o
+  mês atual). Média **zero ou negativa** → "Sem previsão no ritmo atual". **Nenhum mês fechado** ainda →
+  sem previsão. Metas já atingidas/concluídas ou sem valor não mostram previsão.
+  **Previsão aproximada**: numa meta ligada a uma caixinha, a previsão aparece como "chega em
+  **~mar/2027 (aproximada)**", porque a média é do painel inteiro, não daquela caixinha.
+  Cálculo **no servidor**, num lugar só (`server/src/services/metas.js`): cada meta vem da API com
+  `acompanhamento = { caixinha, saldoAtual, progresso, previsao }`; a tela só formata o texto
+  (`client/src/lib/previsao.js`).
+- **Conclusão automática**: quando o **saldo acompanhado** (caixinha ou total guardado) atinge o valor, a meta é marcada
   como concluída sozinha. Você continua podendo marcar/desmarcar à mão — se
   desmarcar uma meta que já foi concluída automaticamente, ela **não** é remarcada
   (a conclusão automática só dispara quando o total *cruza* o valor; se ele cair
   abaixo e voltar a subir, dispara de novo).
-- **Editar** (lápis): título e valor viram inputs (*Salvar* / *Cancelar*, `PATCH`).
+- **Editar** (lápis): título, valor e o que a meta acompanha viram campos (*Salvar* / *Cancelar*, `PATCH`).
   Serve para dar valor às metas que você já tinha ("5 mil", "10 mil", "20 mil").
   Valor em branco = meta sem valor. Mudar o valor reavalia a conclusão automática.
 - **Marcar como concluída**: toque no quadradinho (ou no texto). A caixa fica
@@ -1014,12 +1030,12 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | PATCH  | `/api/despesas/pagas` | sim  | `{ mes, paga?, cartaoId?, ids?, faturaPaga? }`     | `200 { atualizadas, ids, faturaPagaAntes }` — pagar/despagar EM LOTE (um `updateMany`): todas as despesas do mês ou só as do cartão (e a fatura dele); `ids`/`faturaPaga` servem ao "Desfazer". Idempotente · `400` · `404` (cartão de outro usuário) |
 | DELETE | `/api/despesas/:id`   | sim  | query `?escopo=seguintes` (opcional, só fixa)      | `200 { removidas }` (padrão: só esta; `seguintes`: também as cópias fixas dos meses seguintes) · `400` · `404` |
 | GET    | `/api/resumo`         | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { totalReceitas, totalDespesas, outrasComprasCartao, cartaoExcedeu, saldo, totalPago, faltaPagar, fixosGerados }` — `totalDespesas` já CORRIGIDO pelos cartões (inclui `outrasComprasCartao`, a soma das partes não detalhadas de todas as faturas); `totalPago`/`faltaPagar` são só informativos (do mês; sem `mes`, de out/2026 em diante) |
-| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado }` (mais recentes primeiro; já sincronizadas; `guardado` = o mesmo objeto de `GET /api/guardado`, numa chamada só) |
-| POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo? }`                           | `201 { meta }` · `400`                               |
-| PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo? }` (ao menos um; `valorAlvo: null` remove) | `200 { meta }` · `400` · `404`  |
+| GET    | `/api/metas`          | sim  | —                                                 | `200 { metas: [...], guardado, caixinhas }` (mais recentes primeiro; já sincronizadas; cada meta com `caixinhaId` e `acompanhamento: { caixinha, saldoAtual, progresso, previsao }`; `caixinhas` = as do usuário, para o seletor) |
+| POST   | `/api/metas`          | sim  | `{ titulo, valorAlvo?, caixinhaId? }` (`caixinhaId` = caixinha do usuário; omitido/null = total guardado) | `201 { meta }` · `400` |
+| PATCH  | `/api/metas/:id`      | sim  | `{ concluida?, titulo?, valorAlvo?, caixinhaId? }` (ao menos um; `valorAlvo: null` remove; `caixinhaId: null` volta ao total guardado) | `200 { meta }` · `400` · `404` |
 | DELETE | `/api/metas/:id`      | sim  | —                                                 | `204` · `400` (id inválido) · `404`                  |
 | GET    | `/api/guardado`       | sim  | —                                                 | `200 { totalCaixinhas, saldoAcumulado, total, mesesFechados, mediaMensal, emAndamento }` — `total` = soma das caixinhas (só isso); `saldoAcumulado` = receitas − despesas dos meses fechados (informativo, base da média); `mediaMensal` = média de (receitas − despesas) por mês fechado (`null` sem mês fechado); `emAndamento` = `{ mes, receitas, despesas, saldo, entraEm }` (parcial fora do total). (O antigo `PUT /api/guardado` do saldo inicial foi removido.) |
-| GET    | `/api/caixinhas`      | sim  | —                                                 | `200 { caixinhas: [{ _id, nome, valor, createdAt, updatedAt }], limite, guardado }` (ordem de criação; na 1ª vez cria a caixinha "Saldo inicial" a partir do saldo antigo; `guardado` = o mesmo objeto de `GET /api/guardado`, ou `null` se falhar) |
+| GET    | `/api/caixinhas`      | sim  | —                                                 | `200 { caixinhas: [{ _id, nome, valor, createdAt, updatedAt, metasVinculadas }], limite, guardado }` (ordem de criação; na 1ª vez cria a caixinha "Saldo inicial" a partir do saldo antigo; `guardado` = o mesmo objeto de `GET /api/guardado`, ou `null` se falhar) |
 | POST   | `/api/caixinhas`      | sim  | `{ nome, valor }` (nome 2–30; valor número ≥ 0)    | `201 { caixinha }` · `400` (validação / limite de 20) |
 | PATCH  | `/api/caixinhas/:id`  | sim  | `{ nome?, valor? }` (ao menos um)                  | `200 { caixinha }` · `400` · `404` |
 | DELETE | `/api/caixinhas/:id`  | sim  | —                                                 | `204` · `400` (id inválido) · `404` |

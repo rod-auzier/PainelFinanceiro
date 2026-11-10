@@ -3,16 +3,16 @@
  * progresso + botões de editar e excluir.
  *
  * Props:
- *  - meta       {{ _id, titulo, concluida, valorAlvo: number|null }}
- *  - total      {number}  total guardado atual (saldo inicial + receitas − despesas),
- *                         usado para calcular o progresso das metas com valor.
- *  - previsao   {string|null}  (opcional) texto da previsão ("No ritmo atual, chega em mar/2027"),
- *                         calculado pela página (lib/previsao.js). Aparece em texto pequeno, na cor
- *                         secundária, logo abaixo da barra de progresso; `null` = não mostra nada
- *                         (meta sem valor, já atingida ou sem mês fechado para estimar).
+ *  - meta       {{ _id, titulo, concluida, valorAlvo: number|null, caixinhaId: string|null,
+ *                  acompanhamento: { caixinha: { _id, nome } | null, saldoAtual, progresso, previsao } }}
+ *                  `acompanhamento` vem PRONTO do servidor (services/metas.js): o que a meta acompanha
+ *                  (uma caixinha ou o total guardado), o saldo, o progresso (0–1) e a previsão.
+ *  - caixinhas  {Array<{ _id, nome }>}  caixinhas do usuário (para o seletor "trocar ▾" e a edição).
+ *  - cores      {Map<string, string>}  cor de cada caixinha (a mesma da aba Porquinho).
+ *  - onTrocarCaixinha {(meta, caixinhaId: string) => Promise<void>}  "trocar ▾": '' = total guardado.
  *  - onAlternar {(meta) => void}  marcar/desmarcar o checkbox.
  *  - onExcluir  {(meta) => void}  clicar na lixeira.
- *  - onSalvarEdicao {(meta, { titulo: string, valorAlvo: number|null }) => Promise<void>}
+ *  - onSalvarEdicao {(meta, { titulo: string, valorAlvo: number|null, caixinhaId: string }) => Promise<void>}
  *      Salva a edição inline. Deve lançar Error com mensagem se falhar (a mensagem
  *      aparece dentro do item).
  *
@@ -21,11 +21,12 @@
  *    56px de altura. Marcada → caixa verde (`positive`) com "✓" e texto riscado
  *    em `muted` (--color-muted); pendente → só contorno e texto normal;
  *  - acessibilidade: <input type="checkbox"> real oculto só visualmente (`sr-only`);
- *  - META COM VALOR: barra de progresso verde + porcentagem + "R$ X de R$ Y".
- *    Progresso = min(total / valorAlvo, 100%) (nunca abaixo de 0%). Metas sem valor
- *    continuam sendo um checklist simples (sem barra);
- *  - EDIÇÃO inline (lápis): título e valor viram inputs, com Salvar/Cancelar.
- *    Valor vazio = meta sem valor;
+ *  - META COM VALOR: abaixo do título, "Acompanhando:" + pílula (bolinha + nome da caixinha, ou "Total
+ *    guardado (todas as caixinhas)") + link dourado "trocar ▾" (troca SÓ esse campo, ali mesmo); depois a
+ *    barra de progresso verde, "R$ saldo / R$ alvo", a porcentagem e a previsão ("~" quando aproximada).
+ *    Metas sem valor continuam sendo um checklist simples (sem barra);
+ *  - EDIÇÃO inline (lápis): título, valor e o que a meta acompanha (Total guardado | Caixinha
+ *    específica), com Salvar/Cancelar. Valor vazio = meta sem valor;
  *  - botões de 44x44 fora do <label>, para não marcar a meta sem querer.
  *
  * Sem estado de negócio — a página cuida da atualização otimista e da API.
@@ -33,6 +34,9 @@
  */
 import { useState } from 'react';
 import Money from './Money.jsx';
+import CategoriaPonto from './CategoriaPonto.jsx';
+import SeletorAcompanhamento from './SeletorAcompanhamento.jsx';
+import { textoPrevisao } from '../lib/previsao.js';
 
 const BOTAO_ICONE =
   'flex h-11 w-11 shrink-0 items-center justify-center rounded text-muted';
@@ -62,27 +66,36 @@ function IconeLapis() {
   );
 }
 
-/** Fração 0–1 do progresso: min(total / valorAlvo, 1), nunca abaixo de 0. */
-export function fracaoProgresso(total, valorAlvo) {
-  if (!valorAlvo || valorAlvo <= 0) return 0;
-  return Math.max(0, Math.min(total / valorAlvo, 1));
+/** Pílula do que a meta acompanha: bolinha + nome da caixinha, ou "Total guardado (todas as caixinhas)". */
+function PilulaAcompanhamento({ caixinha, cor }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-2 py-0.5 text-xs text-fg">
+      {caixinha ? <CategoriaPonto cor={cor} /> : null}
+      {caixinha ? caixinha.nome : 'Total guardado (todas as caixinhas)'}
+    </span>
+  );
 }
 
-export default function MetaItem({ meta, total, previsao, onAlternar, onExcluir, onSalvarEdicao }) {
+export default function MetaItem({ meta, caixinhas = [], cores = new Map(), onAlternar, onExcluir, onSalvarEdicao, onTrocarCaixinha }) {
   const [editando, setEditando] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [valor, setValor] = useState('');
+  const [vinculo, setVinculo] = useState(''); // caixinha escolhida na edição ('' = total guardado)
+  const [trocando, setTrocando] = useState(false); // "trocar ▾" aberto (só o campo do acompanhamento)
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
+  const acomp = meta.acompanhamento ?? { caixinha: null, saldoAtual: 0, progresso: 0, previsao: null };
   const temValor = meta.valorAlvo != null && meta.valorAlvo > 0;
-  const fracao = fracaoProgresso(total, meta.valorAlvo);
+  const fracao = acomp.progresso ?? 0; // calculado no servidor (0–1)
+  const previsao = textoPrevisao(acomp.previsao);
   // floor: 99,6% aparece como 99%, só mostra 100% quando o alvo foi realmente atingido.
   const porcentagem = Math.floor(fracao * 100);
 
   function iniciarEdicao() {
     setTitulo(meta.titulo);
     setValor(temValor ? String(meta.valorAlvo) : '');
+    setVinculo(meta.caixinhaId ? String(meta.caixinhaId) : '');
     setErro('');
     setEditando(true);
   }
@@ -105,7 +118,7 @@ export default function MetaItem({ meta, total, previsao, onAlternar, onExcluir,
     setErro('');
     setSalvando(true);
     try {
-      await onSalvarEdicao(meta, { titulo: tituloLimpo, valorAlvo });
+      await onSalvarEdicao(meta, { titulo: tituloLimpo, valorAlvo, caixinhaId: vinculo });
       setEditando(false);
     } catch (err) {
       setErro(err.response?.data?.message || err.message || 'Não foi possível salvar.');
@@ -136,6 +149,11 @@ export default function MetaItem({ meta, total, previsao, onAlternar, onExcluir,
               className={`${CAMPO} num mt-1 normal-case`}
             />
           </label>
+          {/* O que a meta acompanha: total guardado ou uma caixinha. */}
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-muted">Acompanha</p>
+            <SeletorAcompanhamento valor={vinculo} onChange={setVinculo} caixinhas={caixinhas} cores={cores} />
+          </div>
           {erro && (
             <p role="alert" className="text-sm text-negative">
               {erro}
@@ -191,9 +209,58 @@ export default function MetaItem({ meta, total, previsao, onAlternar, onExcluir,
         </button>
       </div>
 
-      {/* Meta com valor: barra de progresso + "R$ X de R$ Y" + porcentagem. */}
+      {/* Meta com valor: "Acompanhando:" + pílula + "trocar ▾", barra, "R$ saldo / R$ alvo", % e previsão. */}
       {temValor && (
         <div className="pb-3 pl-3 pr-2">
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            <span>Acompanhando:</span>
+            <PilulaAcompanhamento caixinha={acomp.caixinha} cor={acomp.caixinha ? cores.get(String(acomp.caixinha._id)) : undefined} />
+            <button
+              type="button"
+              aria-expanded={trocando}
+              onClick={() => {
+                setVinculo(meta.caixinhaId ? String(meta.caixinhaId) : '');
+                setErro('');
+                setTrocando((t) => !t);
+              }}
+              className="min-h-[32px] font-medium text-accent hover:opacity-80"
+            >
+              trocar ▾
+            </button>
+          </div>
+
+          {/* "trocar ▾": edita SÓ o que a meta acompanha, ali mesmo. */}
+          {trocando && (
+            <div className="mb-3 space-y-2 rounded border border-border bg-bg p-2.5">
+              <SeletorAcompanhamento valor={vinculo} onChange={setVinculo} caixinhas={caixinhas} cores={cores} />
+              {erro && <p className="text-xs text-negative">{erro}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={salvando}
+                  onClick={async () => {
+                    setSalvando(true);
+                    setErro('');
+                    try {
+                      await onTrocarCaixinha(meta, vinculo);
+                      setTrocando(false);
+                    } catch (err) {
+                      setErro(err.response?.data?.message || 'Não foi possível trocar.');
+                    } finally {
+                      setSalvando(false);
+                    }
+                  }}
+                  className="min-h-[40px] rounded bg-accent px-4 text-sm font-medium text-bg hover:opacity-90 disabled:opacity-60"
+                >
+                  {salvando ? 'Salvando…' : 'Salvar'}
+                </button>
+                <button type="button" onClick={() => setTrocando(false)} className="min-h-[40px] rounded border border-border px-4 text-sm text-muted hover:text-fg">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
           <div
             role="progressbar"
             aria-label={`Progresso da meta ${meta.titulo}`}
@@ -205,9 +272,9 @@ export default function MetaItem({ meta, total, previsao, onAlternar, onExcluir,
             <div className="h-full rounded-full bg-positive transition-[width] duration-500" style={{ width: `${fracao * 100}%` }} />
           </div>
           <div className="mt-1.5 flex items-baseline justify-between gap-3 text-sm text-muted">
+            {/* "R$ saldo / R$ alvo" — o saldo do que a meta acompanha (caixinha ou total guardado). */}
             <span>
-              <Money value={Math.max(0, Math.min(total, meta.valorAlvo))} className="text-fg" /> de{' '}
-              <Money value={meta.valorAlvo} />
+              <Money value={acomp.saldoAtual} className="text-fg" /> / <Money value={meta.valorAlvo} />
             </span>
             <span className="num text-fg">{porcentagem}%</span>
           </div>

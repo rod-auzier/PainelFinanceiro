@@ -14,6 +14,8 @@
 import mongoose from 'mongoose';
 import { Meta, TITULO_MAX } from '../models/Meta.js';
 import { calcularESincronizar } from '../services/guardado.js';
+import { caixinhasDoUsuario, metasComAcompanhamento } from '../services/metas.js';
+import { Caixinha } from '../models/Caixinha.js';
 
 /**
  * Sincroniza as metas com o total guardado (só meses fechados) SEM deixar uma falha travar
@@ -30,6 +32,30 @@ async function sincronizarSemFalhar(userId) {
     console.error('[metas] não foi possível sincronizar com o total guardado:', erro);
     return null;
   }
+}
+
+/**
+ * Valida o `caixinhaId` vindo do body (meta vinculada a uma caixinha).
+ *  - `undefined` → não mexe; `null` ou '' → volta a acompanhar o TOTAL GUARDADO;
+ *  - id → precisa ser de uma caixinha do MESMO usuário, senão erro (400).
+ * @returns {Promise<{ caixinhaId?: import('mongoose').Types.ObjectId | null, erro?: string }>}
+ */
+async function validarCaixinhaId(userId, valor) {
+  if (valor === undefined) return {};
+  if (valor === null || valor === '') return { caixinhaId: null };
+  if (!mongoose.isValidObjectId(valor)) return { erro: 'caixinhaId inválido' };
+  const existe = await Caixinha.exists({ _id: valor, userId }); // só caixinhas do próprio usuário
+  if (!existe) return { erro: 'caixinha não encontrada' };
+  return { caixinhaId: new mongoose.Types.ObjectId(valor) };
+}
+
+/**
+ * Responde com metas já com o `acompanhamento` calculado (saldo, progresso, previsão — services/metas.js).
+ * `guardado` pode ser null (cálculo falhou): aí o progresso usa 0 e não há previsão.
+ */
+async function comAcompanhamento(userId, metas, guardado) {
+  const caixinhas = await caixinhasDoUsuario(userId);
+  return { metas: metasComAcompanhamento(metas, guardado, caixinhas), caixinhas };
 }
 
 /**
@@ -78,8 +104,11 @@ function validarValorAlvo(valor) {
 export async function listarMetas(req, res) {
   // Conclui automaticamente as metas cujo alvo foi atingido e já traz o total guardado.
   const guardado = await sincronizarSemFalhar(req.userId);
-  const metas = await Meta.find({ userId: req.userId }).sort({ createdAt: -1 });
-  res.json({ metas, guardado });
+  const lista = await Meta.find({ userId: req.userId }).sort({ createdAt: -1 });
+  // Cada meta vem com `acompanhamento` (o que acompanha, saldo, progresso, previsão) e a lista de
+  // caixinhas do usuário (para o seletor e as cores na tela), numa chamada só.
+  const { metas, caixinhas } = await comAcompanhamento(req.userId, lista, guardado);
+  res.json({ metas, guardado, caixinhas });
 }
 
 /**
@@ -102,16 +131,20 @@ export async function criarMeta(req, res) {
 
   const alvo = validarValorAlvo(req.body?.valorAlvo);
   if (alvo.erro) return res.status(400).json({ message: alvo.erro });
+  const vinculo = await validarCaixinhaId(req.userId, req.body?.caixinhaId);
+  if (vinculo.erro) return res.status(400).json({ message: vinculo.erro });
 
   const criada = await Meta.create({
     userId: req.userId,
     titulo,
     valorAlvo: alvo.valorAlvo ?? null,
+    caixinhaId: vinculo.caixinhaId ?? null, // padrão: acompanha o total guardado
   });
 
-  await sincronizarSemFalhar(req.userId);
-  const meta = await Meta.findById(criada._id); // relê: pode ter sido concluída automaticamente
-  return res.status(201).json({ meta });
+  const guardado = await sincronizarSemFalhar(req.userId);
+  const relida = await Meta.findOne({ _id: criada._id, userId: req.userId }); // pode ter sido concluída
+  const { metas } = await comAcompanhamento(req.userId, [relida], guardado);
+  return res.status(201).json({ meta: metas[0] });
 }
 
 /**
@@ -140,7 +173,7 @@ export async function atualizarMeta(req, res) {
     return res.status(400).json({ message: 'id inválido' });
   }
 
-  const { titulo, concluida, valorAlvo } = req.body ?? {};
+  const { titulo, concluida, valorAlvo, caixinhaId } = req.body ?? {};
   const alteracoes = {};
 
   if (titulo !== undefined) {
@@ -158,9 +191,11 @@ export async function atualizarMeta(req, res) {
 
   const alvo = validarValorAlvo(valorAlvo);
   if (alvo.erro) return res.status(400).json({ message: alvo.erro });
+  const vinculo = await validarCaixinhaId(req.userId, caixinhaId);
+  if (vinculo.erro) return res.status(400).json({ message: vinculo.erro });
 
-  if (Object.keys(alteracoes).length === 0 && alvo.valorAlvo === undefined) {
-    return res.status(400).json({ message: 'informe titulo, concluida e/ou valorAlvo' });
+  if (Object.keys(alteracoes).length === 0 && alvo.valorAlvo === undefined && vinculo.caixinhaId === undefined) {
+    return res.status(400).json({ message: 'informe titulo, concluida, valorAlvo e/ou caixinhaId' });
   }
 
   // Filtro por userId: meta de outro usuário não é encontrada (404).
@@ -174,11 +209,16 @@ export async function atualizarMeta(req, res) {
     meta.valorAlvo = alvo.valorAlvo;
     meta.alvoAtingido = false; // valor mudou: reavalia a conclusão automática
   }
+  if (vinculo.caixinhaId !== undefined && String(vinculo.caixinhaId) !== String(meta.caixinhaId ?? null)) {
+    meta.caixinhaId = vinculo.caixinhaId; // troca o que a meta acompanha (caixinha ↔ total guardado)
+    meta.alvoAtingido = false; // o saldo acompanhado mudou: reavalia a conclusão automática
+  }
   await meta.save(); // roda os validadores do schema
 
-  await sincronizarSemFalhar(req.userId);
-  const atualizada = await Meta.findById(meta._id); // relê: pode ter sido concluída automaticamente
-  return res.json({ meta: atualizada });
+  const guardado = await sincronizarSemFalhar(req.userId);
+  const relida = await Meta.findOne({ _id: meta._id, userId: req.userId }); // pode ter sido concluída
+  const { metas } = await comAcompanhamento(req.userId, [relida], guardado);
+  return res.json({ meta: metas[0] });
 }
 
 /**
