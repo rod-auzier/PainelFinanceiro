@@ -32,7 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api.js';
 import { brl } from '../lib/format.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { MES_INICIAL, deslocarMes, mensagemFixosGerados, mesFechado, nomeDoMes } from '../lib/mes.js';
+import { DURACAO_AVISO_FIXOS, MES_INICIAL, deslocarMes, mensagemFixosGerados, mesFechado, nomeDoMes } from '../lib/mes.js';
 import CategoriasDonut from '../components/CategoriasDonut.jsx';
 import MaioresDespesas from '../components/MaioresDespesas.jsx';
 import ResumoSaldoCard from '../components/ResumoSaldoCard.jsx';
@@ -46,7 +46,13 @@ export default function Resumo() {
   const [despesas, setDespesas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
-  const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática ao abrir o mês)
+  const [aviso, setAviso] = useState(''); // "N fixos adicionados em <mês>" (sincronização ao abrir o mês)
+  // O aviso dos fixos some sozinho depois de alguns segundos.
+  useEffect(() => {
+    if (!aviso) return undefined;
+    const id = setTimeout(() => setAviso(''), DURACAO_AVISO_FIXOS);
+    return () => clearTimeout(id);
+  }, [aviso]);
   const mesAtualRef = useRef(mes); // mês exibido agora (para não mostrar aviso de outro mês)
   mesAtualRef.current = mes;
   // Fixos gerados no mês exibido, SOMADOS entre respostas: duas requisições simultâneas (ex.:
@@ -77,7 +83,7 @@ export default function Resumo() {
         if (geradosAgora > 0 && mesAtualRef.current === mes) {
           if (geradosRef.current.mes !== mes) geradosRef.current = { mes, total: 0 };
           geradosRef.current.total += geradosAgora;
-          setAviso(mensagemFixosGerados(geradosRef.current.total));
+          setAviso(mensagemFixosGerados(geradosRef.current.total, mes));
         }
         if (!ativo) return;
         setResumo(r1.data);

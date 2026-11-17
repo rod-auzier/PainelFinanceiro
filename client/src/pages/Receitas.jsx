@@ -26,11 +26,11 @@
  *  - total do mês no rodapé da lista e no painel "Receitas do mês" (com a divisão fixas / avulsas).
  * Inputs em 16px (sem zoom no iOS); botões com área de toque confortável.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { mensagemFixosGerados } from '../lib/mes.js';
+import { DURACAO_AVISO_FIXOS, mensagemFixosGerados, mensagemFixosPorMes } from '../lib/mes.js';
 import ConfirmarExclusaoFixo from '../components/ConfirmarExclusaoFixo.jsx';
 import ListaReceitas from '../components/ListaReceitas.jsx';
 import ReceitasMesCard from '../components/ReceitasMesCard.jsx';
@@ -47,13 +47,19 @@ const FORM_VAZIO = { fonte: '', descricao: '', valor: '', recorrente: false };
 
 export default function Receitas() {
   const [mes, setMes] = useMesSelecionado();
-  const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática)
+  const [aviso, setAviso] = useState(''); // "N fixos adicionados em <mês>" (sincronização dos fixos)
+  // O aviso dos fixos some sozinho depois de alguns segundos.
+  useEffect(() => {
+    if (!aviso) return undefined;
+    const id = setTimeout(() => setAviso(''), DURACAO_AVISO_FIXOS);
+    return () => clearTimeout(id);
+  }, [aviso]);
   const { itens: receitas, carregando, erro, recarregar } = useRecurso(
     `/receitas?mes=${mes}`,
     'receitas',
     // A API informa quantos fixos criou ao abrir o mês; só mostramos quando > 0.
     (data) => {
-      if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados));
+      if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados, mes));
     },
   );
   const [form, setForm] = useState(FORM_VAZIO);
@@ -82,7 +88,7 @@ export default function Receitas() {
     setErroForm('');
     setSalvando(true);
     try {
-      await api.post('/receitas', {
+      const { data: criado } = await api.post('/receitas', {
         fonte: form.fonte,
         descricao: form.descricao,
         valor: Number(form.valor),
@@ -90,6 +96,8 @@ export default function Receitas() {
         mes, // lança no mês selecionado
       });
       setForm(FORM_VAZIO);
+      // Fixo novo: o servidor já criou as cópias nos meses seguintes até o atual (avisa onde).
+      if (criado?.fixosPorMes) setAviso(mensagemFixosPorMes(criado.fixosPorMes));
       await recarregar();
     } catch (err) {
       setErroForm(err.response?.data?.message || 'Não foi possível salvar.');
@@ -157,6 +165,8 @@ export default function Receitas() {
     });
     // O servidor já levou a mudança às receitas fixas dos meses seguintes (menos o valor).
     setAvisoFixos(data.propagadas > 0 ? `Aplicado também a ${mesesSeguintes(data.propagadas)}.` : '');
+    // "Repete todo mês" ligado: cópias que faltavam nos meses seguintes foram criadas agora.
+    if (mensagemFixosPorMes(data.fixosPorMes)) setAviso(mensagemFixosPorMes(data.fixosPorMes));
     await recarregar();
   }
 

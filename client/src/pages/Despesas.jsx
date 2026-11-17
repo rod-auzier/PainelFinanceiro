@@ -39,11 +39,11 @@
  *  - "Gerenciar categorias" abre a mesma tela de gerenciar categorias numa janela.
  * Inputs em 16px (sem zoom no iOS); botões com área de toque confortável.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api.js';
 import { useRecurso } from '../hooks/useRecurso.js';
 import { useMesSelecionado } from '../hooks/useMesSelecionado.js';
-import { mensagemFixosGerados } from '../lib/mes.js';
+import { DURACAO_AVISO_FIXOS, mensagemFixosGerados, mensagemFixosPorMes } from '../lib/mes.js';
 import { NOME_OUTROS } from '../lib/constants.js';
 import { useCategorias } from '../context/CategoriasContext.jsx';
 // Layout compartilhado com Receitas: cabeçalho, faixa do formulário e corpo (lista + painel).
@@ -69,14 +69,20 @@ const FORM_VAZIO = { descricao: '', categoria: NOME_OUTROS, valor: '', recorrent
 export default function Despesas() {
   const [mes, setMes] = useMesSelecionado();
   const { resolver } = useCategorias(); // nome/cor de exibição da categoria de cada despesa
-  const [aviso, setAviso] = useState(''); // "N fixos adicionados" (geração automática)
+  const [aviso, setAviso] = useState(''); // "N fixos adicionados em <mês>" (sincronização dos fixos)
+  // O aviso dos fixos some sozinho depois de alguns segundos.
+  useEffect(() => {
+    if (!aviso) return undefined;
+    const id = setTimeout(() => setAviso(''), DURACAO_AVISO_FIXOS);
+    return () => clearTimeout(id);
+  }, [aviso]);
   const { itens: despesas, setItens: setDespesas, carregando, erro, recarregar } = useRecurso(
     `/despesas?mes=${mes}`,
     'despesas',
     // A API informa quantos fixos criou ao abrir o mês; só mostramos quando > 0. Também traz a
     // situação do cartão no mês e a linha calculada "Outras compras no cartão" (ou null).
     (data) => {
-      if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados));
+      if (data.fixosGerados > 0) setAviso(mensagemFixosGerados(data.fixosGerados, mes));
       // Ajuste único dos fixos existentes (cartão/categoria do mês anterior) — só na 1ª abertura.
       if (data.fixosAjustados > 0) {
         setAvisoFixos(
@@ -282,7 +288,7 @@ export default function Despesas() {
     setErroForm('');
     setSalvando(true);
     try {
-      await api.post('/despesas', {
+      const { data: criado } = await api.post('/despesas', {
         descricao: form.descricao,
         categoria: form.categoria,
         valor: Number(form.valor),
@@ -291,6 +297,8 @@ export default function Despesas() {
         mes, // lança no mês selecionado
       });
       setForm(FORM_VAZIO);
+      // Fixo novo: o servidor já criou as cópias nos meses seguintes até o atual (avisa onde).
+      if (criado?.fixosPorMes) setAviso(mensagemFixosPorMes(criado.fixosPorMes));
       await recarregar();
     } catch (err) {
       setErroForm(err.response?.data?.message || 'Não foi possível salvar.');
@@ -359,6 +367,8 @@ export default function Despesas() {
     });
     // O servidor já levou a mudança aos fixos dos meses seguintes (menos valor e paga).
     setAvisoFixos(data.propagadas > 0 ? `Aplicado também a ${mesesSeguintes(data.propagadas)}.` : '');
+    // "Repete todo mês" ligado: cópias que faltavam nos meses seguintes foram criadas agora.
+    if (mensagemFixosPorMes(data.fixosPorMes)) setAviso(mensagemFixosPorMes(data.fixosPorMes));
     await recarregar();
   }
 

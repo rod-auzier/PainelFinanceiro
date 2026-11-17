@@ -9,9 +9,9 @@
  */
 import mongoose from 'mongoose';
 import { Receita } from '../models/Receita.js';
-import { gerarFixosDoMes } from '../services/fixos.js';
+import { gerarFixosDoMes, marcarRemovido, sincronizarDesde } from '../services/fixos.js';
 import { idsDosSeguintes, propagarEdicaoFixo } from '../services/propagacao.js';
-import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMesOpcional } from '../utils/mes.js';
+import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, mesDe, lerMesOpcional } from '../utils/mes.js';
 
 /**
  * Lista as receitas do usuário autenticado.
@@ -86,7 +86,10 @@ export async function criarReceita(req, res) {
     createdAt: createdAtParaMes(mes),
   });
 
-  return res.status(201).json({ receita });
+  // Já nasce fixo ("Repete todo mês")? Cria na hora as cópias que faltam nos meses seguintes até o
+  // atual (sincronização por item, idempotente — services/fixos.js). `fixosPorMes` = mês → quantas.
+  const fixosPorMes = receita.recorrente ? await sincronizarDesde('receita', req.userId, mesDe(receita.createdAt)) : {};
+  return res.status(201).json({ receita, fixosPorMes });
 }
 
 /**
@@ -143,8 +146,11 @@ export async function atualizarReceita(req, res) {
   // PROPAGAÇÃO (mesma operação): fonte, descrição e "Repete todo mês" vão para as cópias fixas dos
   // MESES SEGUINTES; o valor NÃO (cada mês tem o seu). Ver services/propagacao.js.
   const propagadas = await propagarEdicaoFixo('receita', req.userId, antes, receita.toObject());
+  // "Repete todo mês" ligado (ou mantido)? Cria as cópias que FALTAM nos meses seguintes até o atual —
+  // as que já existem não são tocadas pela sincronização (só a propagação acima, nos campos dela).
+  const fixosPorMes = receita.recorrente ? await sincronizarDesde('receita', req.userId, mesDe(receita.createdAt)) : {};
 
-  return res.json({ receita, propagadas });
+  return res.json({ receita, propagadas, fixosPorMes });
 }
 
 /**
@@ -177,6 +183,9 @@ export async function removerReceita(req, res) {
   if (!removida) {
     return res.status(404).json({ message: 'receita não encontrada' });
   }
+
+  // Marca "removido deste mês" (e, se pedido, dos seguintes): a sincronização dos fixos não o recria.
+  await marcarRemovido('receita', req.userId, removida, escopo === 'seguintes');
 
   let removidas = 1;
   if (escopo === 'seguintes' && removida.recorrente) {

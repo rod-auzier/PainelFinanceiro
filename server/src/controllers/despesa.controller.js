@@ -8,7 +8,7 @@
  */
 import mongoose from 'mongoose';
 import { Despesa } from '../models/Despesa.js';
-import { gerarFixosDoMes } from '../services/fixos.js';
+import { gerarFixosDoMes, marcarRemovido, sincronizarDesde } from '../services/fixos.js';
 import {
   cartoesDoMes,
   filtroDespesasDoCartao,
@@ -20,7 +20,7 @@ import { Cartao } from '../models/Cartao.js';
 import { FaturaCartao } from '../models/FaturaCartao.js';
 import { lerCartaoId } from './cartao.controller.js';
 import { ajustarFixosExistentes, idsDosSeguintes, propagarEdicaoFixo } from '../services/propagacao.js';
-import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, lerMes, lerMesOpcional } from '../utils/mes.js';
+import { createdAtParaMes, filtroDesdeInicio, filtroDoMes, mesDe, lerMes, lerMesOpcional } from '../utils/mes.js';
 
 /**
  * Lê o cartão de crédito do corpo de uma despesa (criação/edição).
@@ -141,7 +141,10 @@ export async function criarDespesa(req, res) {
     createdAt: createdAtParaMes(mes),
   });
 
-  return res.status(201).json({ despesa });
+  // Já nasce fixo ("Repete todo mês")? Cria na hora as cópias que faltam nos meses seguintes até o
+  // atual (sincronização por item, idempotente — services/fixos.js). `fixosPorMes` = mês → quantas.
+  const fixosPorMes = despesa.recorrente ? await sincronizarDesde('despesa', req.userId, mesDe(despesa.createdAt)) : {};
+  return res.status(201).json({ despesa, fixosPorMes });
 }
 
 /**
@@ -206,8 +209,11 @@ export async function atualizarDespesa(req, res) {
   const despesa = await Despesa.findOne({ _id: req.params.id, userId: req.userId });
   // Mesma operação da edição: leva os campos que se propagam para os meses seguintes.
   const propagadas = await propagarEdicaoFixo('despesa', req.userId, antes, despesa.toObject());
+  // "Repete todo mês" ligado (ou mantido)? Cria as cópias que FALTAM nos meses seguintes até o atual —
+  // as que já existem não são tocadas pela sincronização (só a propagação acima, nos campos dela).
+  const fixosPorMes = despesa.recorrente ? await sincronizarDesde('despesa', req.userId, mesDe(despesa.createdAt)) : {};
 
-  return res.json({ despesa, propagadas });
+  return res.json({ despesa, propagadas, fixosPorMes });
 }
 
 /**
@@ -381,6 +387,9 @@ export async function removerDespesa(req, res) {
   }
 
   // "Este e os meses seguintes": também as cópias fixas posteriores (nunca meses anteriores).
+  // Marca "removido deste mês" (e, se pedido, dos seguintes): a sincronização dos fixos não o recria.
+  await marcarRemovido('despesa', req.userId, removida, escopo === 'seguintes');
+
   let removidas = 1;
   if (escopo === 'seguintes' && removida.recorrente) {
     const ids = await idsDosSeguintes('despesa', req.userId, removida);

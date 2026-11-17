@@ -1,180 +1,149 @@
 /**
- * Geração AUTOMÁTICA dos lançamentos fixos (`recorrente: true`) — Receitas e Despesas.
+ * SINCRONIZAÇÃO DOS LANÇAMENTOS FIXOS ("Repete todo mês") — Receitas e Despesas, POR ITEM e IDEMPOTENTE.
  *
- * Ao abrir um mês, se ele ainda não foi "gerado", o sistema cria sozinho os
- * lançamentos recorrentes do mês de origem, mantendo descrição, categoria,
- * valor e o dia do mês — o usuário só edita o que mudou (ex.: a conta de luz).
+ * REGRA
+ *   Todo lançamento com "Repete todo mês" deve existir em TODOS os meses seguintes até o mês ATUAL (fuso
+ *   America/Fortaleza), nunca antes de MES_INICIAL. Para cada mês de destino, olhamos ITEM A ITEM:
+ *     - para cada CHAVE (mesmo lançamento: descrição — receita: fonte + descrição — sem acento, sem
+ *       diferença de maiúscula/espaços; ver services/propagacao.js → chaveDoFixo), pegamos a ocorrência
+ *       MAIS RECENTE antes do mês de destino;
+ *     - se ela é fixa (`recorrente: true`) e NÃO existe nenhum lançamento com essa chave no destino →
+ *       criamos a cópia: descrição, categoria, cartão, valor e o dia do mês dessa ocorrência mais recente,
+ *       "Repete todo mês" = true e paga = false;
+ *     - se JÁ existe no destino (fixo ou não) → não cria nem altera NADA (valor, paga, edições ficam);
+ *     - se a ocorrência mais recente NÃO é fixa (o usuário desligou "Repete todo mês" ali) → não cria;
+ *     - se o usuário EXCLUIU o lançamento daquele mês (marca FixoRemovido) → não recria (ver o model).
+ *   Repetir a sincronização não muda nada: ela só cria o que falta.
  *
- * REGRAS
- *  - Só gera para meses de MES_INICIAL (exclusive) até o mês ATUAL. Meses
- *    futuros (navegados só para olhar) não geram nada.
- *  - ORIGEM = o mês mais recente, anterior ao alvo e não anterior a MES_INICIAL,
- *    que tenha ao menos um recorrente. Por isso pular um mês não quebra nada
- *    (se novembro nunca foi aberto, janeiro copia de outubro).
- *  - Não duplica um lançamento que já existe no mês de destino (mesma "chave":
- *    Despesa = descrição; Receita = fonte + descrição — comparação sem diferenciar
- *    caixa/espaços — e também recorrente).
+ * QUANDO RODA
+ *   (a) ao abrir/consultar um mês (GET /api/despesas|receitas|resumo?mes=) — só até o mês atual;
+ *   (b) ao CRIAR um lançamento já com "Repete todo mês" — preenche os meses seguintes até o atual;
+ *   (c) ao EDITAR e ligar "Repete todo mês" — idem;
+ *   e antes de somar o total/média (services/guardado.js), para todos os meses até o atual.
  *
- * IDEMPOTÊNCIA E CONCORRÊNCIA
- *  Cada (usuário, tipo, mês) tem um marcador em `FixosGerados` com ÍNDICE ÚNICO.
- *  Gerar = "reivindicar" o marcador (insert). Se duas requisições chegam juntas
- *  (tela aberta duas vezes, dois aparelhos), só uma consegue inserir o marcador e
- *  gerar; a outra recebe chave duplicada, não gera nada e espera a primeira terminar.
- *  O marcador só é criado quando há o que copiar — assim, abrir um mês cujo mês de
- *  origem ainda não tem recorrentes não "queima" a geração. E, como cada mês é
- *  gerado uma única vez, um fixo que você apagar não ressuscita.
- *  Se a geração travar no meio (ex.: função serverless interrompida), o marcador
- *  fica "velho" (sem `concluidoEm`) e é recuperado automaticamente após 30 s.
+ * (Antes havia um marcador "este mês já foi gerado" (model FixosGerados): um mês gerado nunca mais era
+ *  conferido, e um fixo marcado depois num mês anterior não chegava aos meses seguintes. O marcador
+ *  ficou LEGADO — os registros continuam no banco, mas não são mais lidos.)
  *
- * Isolamento: tudo filtrado por `userId`.
+ * CONCORRÊNCIA: uma trava curta por (usuário, tipo, mês) — TravaFixos — evita duas requisições
+ * simultâneas criarem a mesma cópia; quem perde espera a outra terminar e não cria nada.
+ *
+ * Isolamento: tudo filtrado por `userId`. Nada é apagado aqui.
  */
 import { Receita } from '../models/Receita.js';
 import { Despesa } from '../models/Despesa.js';
-import { FixosGerados } from '../models/FixosGerados.js';
-import {
-  MES_INICIAL,
-  dataNoMes,
-  diaDe,
-  filtroDoMes,
-  limitesDoMes,
-  mesAtual,
-  mesDe,
-  mesSeguinte,
-} from '../utils/mes.js';
+import { FixoRemovido } from '../models/FixoRemovido.js';
+import { TravaFixos } from '../models/TravaFixos.js';
+import { chaveDoFixo } from './propagacao.js';
+import { MES_INICIAL, dataNoMes, diaDe, limitesDoMes, mesAtual, mesDe, mesSeguinte } from '../utils/mes.js';
 
 /**
- * Como cada tipo de lançamento é identificado e copiado.
- * `campos` é a lista BRANCA do que vai para o mês novo: o status `paga` da despesa fica de fora
- * de propósito — o fixo gerado sempre entra como NÃO pago (o default do model).
+ * Como cada tipo é copiado. `campos` é a lista BRANCA do que vai para a cópia (além de userId, recorrente
+ * e createdAt): `paga` fica de fora de propósito — a cópia sempre entra como NÃO paga. O cartão
+ * (`cartao` + `cartaoId`) é copiado: o fixo continua no mesmo cartão; o valor da FATURA não é copiado.
  */
 export const CONFIG_FIXOS = {
-  // `cartao` e `cartaoId` são copiados (o fixo continua sendo pago no MESMO cartão); o valor da FATURA
-  // não é copiado — ela é outro model (FaturaCartao) e muda todo mês.
-  despesa: { Model: Despesa, chaves: ['descricao'], campos: ['descricao', 'categoria', 'valor', 'cartao', 'cartaoId'] },
-  receita: { Model: Receita, chaves: ['fonte', 'descricao'], campos: ['fonte', 'descricao', 'valor'] },
+  despesa: { Model: Despesa, campos: ['descricao', 'categoria', 'valor', 'cartao', 'cartaoId'] },
+  receita: { Model: Receita, campos: ['fonte', 'descricao', 'valor'] },
 };
 
-const ESPERA_MAX_MS = 3000; // quanto o "perdedor" da corrida espera o "ganhador" terminar
+const ESPERA_MAX_MS = 3000; // quanto o "perdedor" da trava espera o "ganhador" terminar
 const ESPERA_PASSO_MS = 150;
-const MARCADOR_TRAVADO_MS = 30_000; // marcador sem conclusão há mais que isso = geração travada
-
-const normalizar = (v) => String(v ?? '').trim().toLowerCase();
+const TRAVA_VELHA_MS = 30_000; // trava mais velha que isso = sincronização interrompida
 const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Tenta "reivindicar" a geração de (usuário, tipo, mês).
- * @returns {Promise<boolean>} `true` se esta chamada ganhou e deve gerar.
+ * Executa `fn` com a trava de (usuário, tipo, mês). Se outra requisição já estiver sincronizando, espera
+ * ela terminar e devolve 0 (ela é quem cria). A trava é sempre removida ao final.
  */
-async function reivindicar(userId, tipo, mes) {
-  const inserir = async () => {
+async function comTrava(userId, tipo, mes, fn) {
+  await TravaFixos.init(); // índice único pronto antes de depender dele
+  const pegar = async () => {
     try {
-      await FixosGerados.create({ userId, tipo, mes });
+      await TravaFixos.create({ userId, tipo, mes });
       return true;
     } catch (erro) {
-      if (erro?.code === 11000) return false; // chave duplicada: outra requisição já reivindicou
+      if (erro?.code === 11000) return false; // outra requisição está sincronizando este mês
       throw erro;
     }
   };
 
-  if (await inserir()) return true;
-
-  // Já existia. Se estiver travado (sem conclusão há muito tempo), remove e tenta de novo.
-  const limite = new Date(Date.now() - MARCADOR_TRAVADO_MS);
-  const velho = await FixosGerados.findOneAndDelete({
-    userId,
-    tipo,
-    mes,
-    concluidoEm: null,
-    criadoEm: { $lt: limite },
-  });
-  return velho ? inserir() : false;
-}
-
-/** Espera (até ESPERA_MAX_MS) a geração em andamento de outra requisição terminar. */
-async function aguardarConclusao(userId, tipo, mes) {
-  const fim = Date.now() + ESPERA_MAX_MS;
-  while (Date.now() < fim) {
-    const marcador = await FixosGerados.findOne({ userId, tipo, mes }).select('concluidoEm');
-    if (!marcador || marcador.concluidoEm) return;
-    await dormir(ESPERA_PASSO_MS);
+  let minha = await pegar();
+  if (!minha) {
+    // Trava esquecida (serverless interrompida)? Descarta e tenta de novo.
+    const velha = await TravaFixos.findOneAndDelete({ userId, tipo, mes, criadoEm: { $lt: new Date(Date.now() - TRAVA_VELHA_MS) } });
+    if (velha) minha = await pegar();
+  }
+  if (!minha) {
+    const fim = Date.now() + ESPERA_MAX_MS;
+    while (Date.now() < fim && (await TravaFixos.exists({ userId, tipo, mes }))) await dormir(ESPERA_PASSO_MS);
+    return 0;
+  }
+  try {
+    return await fn();
+  } finally {
+    await TravaFixos.deleteOne({ userId, tipo, mes }).catch(() => {});
   }
 }
 
 /**
- * Gera os fixos de UM tipo para UM mês, se ainda for o caso.
- *
- * @param   {'receita'|'despesa'} tipo
- * @param   {string} userId
- * @param   {string} mes     mês a gerar, "AAAA-MM" (já validado, ≥ MES_INICIAL)
- * @param   {string} [hoje]  mês ATUAL "AAAA-MM" (padrão: agora). Parâmetro para testes.
- * @returns {Promise<number>} quantos lançamentos foram criados NESTA chamada (0 se não
- *          era para gerar, já estava gerado, não havia origem ou outra requisição gerou).
+ * Cria, no mês `mes`, as cópias que faltam dos fixos (regra no topo). Sem trava — use `gerarFixosDoMes`.
+ * @returns {Promise<number>} quantas cópias foram criadas
+ */
+async function sincronizarMes(tipo, userId, mes) {
+  const { Model, campos } = CONFIG_FIXOS[tipo];
+  const inicioDestino = limitesDoMes(mes).inicio;
+
+  const [itens, marcas] = await Promise.all([
+    // Tudo de MES_INICIAL até o fim do mês de destino, em ordem: o último visto de cada chave antes do
+    // destino é a "ocorrência mais recente".
+    Model.find({ userId, createdAt: { $gte: limitesDoMes(MES_INICIAL).inicio, $lt: limitesDoMes(mes).fim } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean(),
+    FixoRemovido.find({ userId, tipo, mes: { $lte: mes } }).lean(),
+  ]);
+
+  const noDestino = new Set(); // chaves que já existem no mês de destino (fixas ou não)
+  const maisRecente = new Map(); // chave → ocorrência mais recente ANTES do destino
+  for (const item of itens) {
+    const chave = chaveDoFixo(tipo, item);
+    if (item.createdAt >= inicioDestino) noDestino.add(chave);
+    else maisRecente.set(chave, item);
+  }
+
+  // Excluído pelo usuário? "Só deste mês" bloqueia só este mês; "este e os seguintes" bloqueia daqui em
+  // diante, a menos que a fonte seja mais nova que a exclusão (o usuário voltou a lançar o fixo).
+  const excluido = (chave, mesFonte) =>
+    marcas.some((m) => m.chave === chave && (m.mes === mes || (m.emDiante && m.mes <= mes && mesFonte < m.mes)));
+
+  const novos = [];
+  for (const [chave, fonte] of maisRecente) {
+    if (!fonte.recorrente) continue; // a ocorrência mais recente não repete (o usuário desligou)
+    if (noDestino.has(chave)) continue; // já existe no destino: não cria nem mexe
+    if (excluido(chave, mesDe(fonte.createdAt))) continue; // o usuário excluiu deste mês
+    const copia = { userId, recorrente: true, createdAt: dataNoMes(mes, diaDe(fonte.createdAt)) };
+    for (const campo of campos) if (fonte[campo] !== undefined) copia[campo] = fonte[campo];
+    novos.push(copia); // `paga` não é copiado: entra como não paga (padrão do model)
+  }
+  if (novos.length) await Model.insertMany(novos);
+  return novos.length;
+}
+
+/**
+ * Sincroniza os fixos de UM tipo em UM mês (idempotente).
+ * @param {'receita'|'despesa'} tipo
+ * @param {string} userId
+ * @param {string} mes   "AAAA-MM" (já validado)
+ * @param {string} [hoje] mês atual (padrão: agora, America/Fortaleza). Parâmetro para testes.
+ * @returns {Promise<number>} quantas cópias foram criadas NESTA chamada (0 se nada faltava, se o mês é
+ *          MES_INICIAL/anterior ou futuro, ou se outra requisição estava sincronizando).
  */
 export async function gerarFixosDoMes(tipo, userId, mes, hoje = mesAtual()) {
-  // MES_INICIAL não tem origem (nada antes dele); meses futuros não geram.
-  if (mes <= MES_INICIAL || mes > hoje) return 0;
-
-  await FixosGerados.init(); // garante o índice único antes de depender dele
-
-  const marcador = await FixosGerados.findOne({ userId, tipo, mes }).select('concluidoEm');
-  if (marcador?.concluidoEm) return 0; // caminho rápido: já gerado
-
-  const { Model, chaves, campos } = CONFIG_FIXOS[tipo];
-
-  // Origem: o mês mais recente (entre MES_INICIAL e o alvo) que tenha recorrentes.
-  const maisRecente = await Model.findOne({
-    userId,
-    recorrente: true,
-    createdAt: { $gte: limitesDoMes(MES_INICIAL).inicio, $lt: limitesDoMes(mes).inicio },
-  })
-    .sort({ createdAt: -1 })
-    .select('createdAt');
-  if (!maisRecente) return 0; // nada para copiar (e não queima o marcador)
-  const mesOrigem = mesDe(maisRecente.createdAt);
-
-  if (!(await reivindicar(userId, tipo, mes))) {
-    await aguardarConclusao(userId, tipo, mes);
-    return 0; // outra requisição gerou (ou está gerando) este mês
-  }
-
-  try {
-    const [fixosOrigem, fixosDestino] = await Promise.all([
-      Model.find({ userId, recorrente: true, ...filtroDoMes(mesOrigem) }).sort({ createdAt: 1 }),
-      Model.find({ userId, recorrente: true, ...filtroDoMes(mes) }),
-    ]);
-
-    const chaveDe = (doc) => chaves.map((c) => normalizar(doc[c])).join('|');
-    const existentes = new Set(fixosDestino.map(chaveDe));
-
-    const novos = [];
-    for (const fixo of fixosOrigem) {
-      const chave = chaveDe(fixo);
-      if (existentes.has(chave)) continue; // já existe neste mês
-      existentes.add(chave); // também evita duplicar fixos repetidos na própria origem
-
-      const copia = {
-        userId,
-        recorrente: true,
-        createdAt: dataNoMes(mes, diaDe(fixo.createdAt)), // mesmo dia, mês de destino
-      };
-      for (const campo of campos) copia[campo] = fixo[campo];
-      novos.push(copia);
-    }
-
-    if (novos.length > 0) await Model.insertMany(novos);
-    await FixosGerados.updateOne({ userId, tipo, mes }, { concluidoEm: new Date() });
-    return novos.length;
-  } catch (erro) {
-    // Falhou no meio: libera o marcador para que uma próxima abertura tente de novo.
-    await FixosGerados.deleteOne({ userId, tipo, mes }).catch(() => {});
-    throw erro;
-  }
+  if (mes <= MES_INICIAL || mes > hoje) return 0; // MES_INICIAL não tem mês anterior; futuro não gera
+  return comTrava(userId, tipo, mes, () => sincronizarMes(tipo, userId, mes));
 }
 
-/**
- * Gera os fixos de receitas E despesas para um mês (o que a abertura do mês dispara).
- * @returns {Promise<{ receitas: number, despesas: number, total: number }>}
- */
+/** Receitas E despesas de um mês (o que a abertura do mês dispara). */
 export async function gerarFixosDoMesTodos(userId, mes, hoje = mesAtual()) {
   const receitas = await gerarFixosDoMes('receita', userId, mes, hoje);
   const despesas = await gerarFixosDoMes('despesa', userId, mes, hoje);
@@ -182,15 +151,45 @@ export async function gerarFixosDoMesTodos(userId, mes, hoje = mesAtual()) {
 }
 
 /**
- * Garante que TODOS os meses, de MES_INICIAL até o mês atual, já foram gerados —
- * em ordem, do mais antigo ao mais novo (cada um se apoia no anterior). Usado pelo
- * "total guardado", que soma todos os meses e não pode ficar sem os fixos de um mês
- * que ainda não foi aberto na tela.
- * @param {string} userId
- * @param {string} [hoje] mês atual "AAAA-MM" (padrão: agora). Parâmetro para testes.
+ * Sincroniza um tipo nos meses SEGUINTES a `mesOrigem`, em ordem, até o mês atual — usado ao criar um
+ * fixo ou ao ligar "Repete todo mês" num lançamento (as cópias que faltam aparecem na hora).
+ * @returns {Promise<Record<string, number>>} mês → quantas cópias foram criadas (só meses com > 0)
+ */
+export async function sincronizarDesde(tipo, userId, mesOrigem, hoje = mesAtual()) {
+  const criados = {};
+  for (let mes = mesSeguinte(mesOrigem); mes <= hoje; mes = mesSeguinte(mes)) {
+    const n = await gerarFixosDoMes(tipo, userId, mes, hoje);
+    if (n > 0) criados[mes] = n;
+  }
+  return criados;
+}
+
+/**
+ * Garante a sincronização de TODOS os meses, de MES_INICIAL até o atual, em ordem (cada um se apoia no
+ * anterior). Usado pelo total guardado / média, que somam todos os meses.
  */
 export async function garantirFixosAteMesAtual(userId, hoje = mesAtual()) {
   for (let mes = mesSeguinte(MES_INICIAL); mes <= hoje; mes = mesSeguinte(mes)) {
     await gerarFixosDoMesTodos(userId, mes, hoje);
   }
+}
+
+/**
+ * Grava a marca "removido deste mês" de um lançamento excluído (o "removidoDoMes"), para a
+ * sincronização não recriá-lo. `emDiante` = o usuário excluiu também dos meses seguintes.
+ * Idempotente (upsert). Nada é apagado.
+ * @param {'receita'|'despesa'} tipo
+ * @param {string} userId
+ * @param {object} lancamento  o lançamento excluído (precisa das chaves e do createdAt)
+ * @param {boolean} emDiante
+ */
+export async function marcarRemovido(tipo, userId, lancamento, emDiante = false) {
+  const chave = chaveDoFixo(tipo, lancamento);
+  const mes = mesDe(lancamento.createdAt);
+  await FixoRemovido.updateOne(
+    { userId, tipo, chave, mes },
+    // `emDiante` nunca volta de true para false (uma exclusão "e seguintes" vale mais que uma "só deste").
+    emDiante ? { $set: { emDiante: true }, $setOnInsert: { criadoEm: new Date() } } : { $setOnInsert: { emDiante: false, criadoEm: new Date() } },
+    { upsert: true },
+  );
 }

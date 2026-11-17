@@ -1,5 +1,8 @@
 /**
- * Model: FixosGerados — marcador de "os fixos deste mês já foram gerados".
+ * Model: FixosGerados — LEGADO / NÃO É MAIS LIDO. Era o marcador de "os fixos deste mês já foram gerados".
+ * A geração passou a ser uma SINCRONIZAÇÃO POR ITEM (services/fixos.js), conferida a cada abertura do mês,
+ * com a marca FixoRemovido para não recriar o que o usuário excluiu. Os registros antigos ficam no banco.
+ *
  *
  * Para que a geração automática de lançamentos recorrentes NUNCA duplique — nem
  * se a tela abrir duas vezes, nem com dois aparelhos ao mesmo tempo — cada

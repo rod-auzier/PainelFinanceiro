@@ -87,11 +87,29 @@ export function formatarDataIso(iso) {
 }
 
 /**
- * Aviso discreto quando o servidor gerou fixos automaticamente ao abrir o mês.
- * @param {number} n  quantidade gerada (campo `fixosGerados` da API)
- * @returns {string}  "" quando n = 0
+ * Aviso discreto quando a SINCRONIZAÇÃO DOS FIXOS (no servidor) criou cópias que faltavam num mês:
+ * "↻ 3 fixos adicionados em novembro/2026".
+ * @param {number} n    quantidade criada (campo `fixosGerados` da API)
+ * @param {string} mes  "AAAA-MM" do mês onde foram criados
+ * @returns {string}    "" quando n = 0
  */
-export function mensagemFixosGerados(n) {
+export function mensagemFixosGerados(n, mes) {
   if (!n) return '';
-  return `↻ ${n} ${n === 1 ? 'fixo adicionado' : 'fixos adicionados'} automaticamente (do mês anterior).`;
+  return `↻ ${n} ${n === 1 ? 'fixo adicionado' : 'fixos adicionados'} em ${rotuloMesCurto(mes)}`;
 }
+
+/**
+ * O mesmo aviso para vários meses de uma vez (criar ou ligar "Repete todo mês" num lançamento preenche os
+ * meses seguintes): `{ "2026-11": 1, "2026-12": 1 }` → "↻ 1 fixo adicionado em novembro/2026 · 1 fixo…".
+ * @param {Record<string, number> | undefined} porMes  campo `fixosPorMes` da API
+ */
+export function mensagemFixosPorMes(porMes) {
+  return Object.entries(porMes ?? {})
+    .filter(([, n]) => n > 0)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([mes, n], i) => (i === 0 ? mensagemFixosGerados(n, mes) : mensagemFixosGerados(n, mes).replace('↻ ', '')))
+    .join(' · ');
+}
+
+/** Quanto tempo (ms) os avisos discretos de fixos ficam na tela antes de sumir sozinhos. */
+export const DURACAO_AVISO_FIXOS = 6000;

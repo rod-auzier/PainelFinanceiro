@@ -148,7 +148,9 @@ Finanças/
         │   ├── FaturaCartao.js # { userId, cartaoId, mes "AAAA-MM", valor, paga } — 1 por cartão e mês; `paga` = pago da linha calculada
         │   ├── Meta.js         # { userId, titulo, concluida, valorAlvo?, alvoAtingido, caixinhaId?, createdAt }
         │   ├── Categoria.js    # { userId, nome (2–24, único por usuário sem diferenciar maiúsculas), cor, createdAt }
-        │   └── FixosGerados.js # marcador (usuário, tipo, mês) da geração automática de fixos
+        │   ├── FixoRemovido.js # marca "removido do mês" (usuário, tipo, descrição normalizada, mês, emDiante) — a sincronização não recria
+        │   ├── TravaFixos.js   # trava curta (usuário, tipo, mês) da sincronização dos fixos (concorrência)
+        │   └── FixosGerados.js # LEGADO: antigo marcador "mês já gerado" (não é mais lido)
         ├── middlewares/
         │   ├── auth.js         # Valida JWT → injeta req.userId
         │   └── errorHandler.js # 404 + handler de erros padronizado
@@ -156,7 +158,7 @@ Finanças/
         │   ├── asyncHandler.js # Encaminha erros de handlers async ao errorHandler
         │   └── mes.js          # MES_INICIAL + mês "AAAA-MM": mesAtual() em America/Fortaleza, limites do mês, filtro por createdAt
         ├── services/
-        │   ├── fixos.js        # geração AUTOMÁTICA dos fixos do mês (idempotente, com marcador único)
+        │   ├── fixos.js        # SINCRONIZAÇÃO dos fixos por item (idempotente) + marca de removido
         │   ├── propagacao.js   # edição de fixo vale para os meses seguintes (campos que se propagam) + ajuste único
         │   ├── totais.js       # somarValor / somarMesesFechados: somas de receitas/despesas (aggregation)
         │   ├── guardado.js     # total guardado (= soma das caixinhas) + média dos meses fechados + parcial do mês + conclusão automática das metas
@@ -690,20 +692,31 @@ em diante. A constante vive em um único lugar por lado: `server/src/utils/mes.j
   **e só meses fechados** (ver [Total guardado e média](#total-guardado-e-média)). O **total guardado**
   é só a soma das caixinhas.
 
-**Fixos automáticos (feitos no backend)** — lançamentos com "Repete todo mês" são
-criados sozinhos ao abrir um mês (`GET /api/receitas|despesas?mes=` e `GET /api/resumo?mes=`):
-- copia **descrição, categoria e valor** (receitas: fonte + descrição + valor) e o dia do mês;
-- **só até o mês atual** — meses futuros (navegados só para olhar) não geram nada, e
-  nunca antes de outubro/2026;
-- a origem é o **mês mais recente que tenha fixos** (se você pulou um mês, continua
-  funcionando — ex.: janeiro copia de outubro se nov/dez nunca foram abertos);
-- **nunca duplica**: pula o que já existe no mês (mesma descrição, também recorrente) e, além
-  disso, cada (usuário, tipo, mês) tem um *marcador* com **índice único** (`FixosGerados`):
-  mesmo com a tela aberta duas vezes ou em dois aparelhos ao mesmo tempo, só uma
-  requisição gera — as outras esperam e só leem. Marcador travado há mais de 30 s é recuperado;
-- como cada mês é gerado uma vez, **um fixo apagado não ressuscita** ao reabrir o mês;
-- a resposta traz `fixosGerados` (quantos foram criados na chamada) e a tela mostra um aviso
-  discreto ("N fixos adicionados").
+**Fixos / "Repete todo mês" (sincronização no backend, POR ITEM)** — todo lançamento com "Repete todo
+mês" existe em **todos os meses seguintes até o mês atual** (fuso America/Fortaleza), nunca antes de
+outubro/2026. A sincronização (`server/src/services/fixos.js`) é **idempotente** e vale igual para receitas
+e despesas:
+- para cada lançamento (identificado pela **descrição normalizada** — sem acento, sem diferença de
+  maiúscula/espaços; receitas: fonte + descrição), pega a **ocorrência mais recente** antes do mês;
+- se ela é fixa e o mês **ainda não tem** um lançamento com a mesma descrição → cria a cópia com
+  descrição, categoria, cartão, **valor da ocorrência mais recente** e o mesmo dia, "Repete todo mês"
+  ligado e **não paga**;
+- se o mês **já tem** (fixo ou não) → não cria e **não sobrescreve** nada (valor editado, paga etc. ficam);
+- se a ocorrência mais recente teve "Repete todo mês" desligado → não leva adiante;
+- **quando roda**: ao abrir um mês (`GET /api/receitas|despesas|resumo?mes=`), ao **criar** um lançamento
+  já fixo e ao **editar ligando** "Repete todo mês" (nesses dois casos preenche na hora os meses seguintes
+  até o atual — ex.: marcar um fixo em outubro já cria em novembro); o total guardado/média também
+  sincroniza todos os meses antes de somar. Meses futuros (navegados só para olhar) não geram nada;
+- **exclusão não ressuscita**: excluir mantém a pergunta de sempre, e grava uma marca *removido do mês*
+  (`FixoRemovido`: usuário, tipo, descrição normalizada, mês). "Só deste mês" impede a recriação só naquele
+  mês; "este e os seguintes" impede dali em diante (até o fixo ser lançado de novo num mês posterior);
+- **concorrência**: uma trava curta por (usuário, tipo, mês) (`TravaFixos`, índice único, removida ao
+  terminar; esquecida há mais de 30 s é descartada) impede duas requisições simultâneas de duplicar;
+- o antigo marcador "mês já gerado" (`FixosGerados`) causava o bug de fixos marcados depois num mês
+  anterior não chegarem aos meses seguintes já abertos: ficou **legado** (registros mantidos, não é mais lido).
+  Cópias apagadas *antes* desta mudança não têm marca e podem reaparecer uma vez;
+- a resposta traz `fixosGerados` (abrir o mês) ou `fixosPorMes` (`{ "AAAA-MM": n }`, ao criar/editar) e a
+  tela mostra um aviso discreto **"↻ 3 fixos adicionados em novembro/2026"**, que some sozinho em ~6 s.
 O cálculo do total guardado/média também garante a geração de todos os meses até o atual antes de somar.
 
 **Editar e excluir fixos — propagação para os meses seguintes** (`server/src/services/propagacao.js`)
@@ -1032,12 +1045,12 @@ todas as queries de receita/despesa filtram por esse `userId`.
 | PATCH  | `/api/auth/perfil`    | sim  | `{ nome, sobrenome }`                              | `200 { user }` · `400` · `401`                       |
 | PATCH  | `/api/auth/senha`     | sim  | `{ senhaAtual, novaSenha, confirmacao }`           | `200 { message }` · `400` (validação / "Senha atual incorreta") · `429` (bloqueio por 5 erros seguidos, 10 min) · `401` |
 | GET    | `/api/receitas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { receitas: [...], fixosGerados }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante) |
-| POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao?, recorrente?, mes? }`  | `201 { receita }` · `400`                            |
-| PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao?, recorrente? }`        | `200 { receita, propagadas }` (fixa: fonte/descrição/recorrente vão para os meses seguintes; o valor não) · `400` · `404` |
+| POST   | `/api/receitas`       | sim  | `{ fonte, valor, descricao?, recorrente?, mes? }`  | `201 { receita, fixosPorMes }` (fixa: cópias criadas nos meses seguintes até o atual) · `400` |
+| PUT    | `/api/receitas/:id`   | sim  | `{ fonte, valor, descricao?, recorrente? }`        | `200 { receita, propagadas, fixosPorMes }` (fixa: fonte/descrição/recorrente vão para os meses seguintes; o valor não) · `400` · `404` |
 | DELETE | `/api/receitas/:id`   | sim  | query `?escopo=seguintes` (opcional, só fixa)      | `200 { removidas }` (padrão: só esta; `seguintes`: também as cópias fixas dos meses seguintes) · `400` · `404` |
 | GET    | `/api/despesas`       | sim  | query `?mes=AAAA-MM` (opcional)                    | `200 { despesas: [...], fixosGerados, cartoes?, linhasVirtuais? }` (do mês; abrir o mês gera os fixos; sem `mes`, de out/2026 em diante). Com `mes`: `cartoes` = situação de cada cartão (`{ cartoes: [{ cartao, fatura, detalhado, naoDetalhado, totalCartao, excedeu }], naoDetalhado, excedeu }`) e `linhasVirtuais` = as linhas calculadas "Outras compras no cartão (nome)". Abrir a tela aplica a transição do cartão padrão (1 vez) e o ajuste único dos fixos (`fixosAjustados` = quantos foram ajustados) |
-| POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId?, mes? }` (`cartaoId`: cartão do usuário ou `null`) | `201 { despesa }` · `400` |
-| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId? }` | `200 { despesa, propagadas }` (fixa: descrição/categoria/cartão/recorrente vão para os meses seguintes; valor e paga não) · `400` · `404` (não altera `paga`) |
+| POST   | `/api/despesas`       | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId?, mes? }` (`cartaoId`: cartão do usuário ou `null`) | `201 { despesa, fixosPorMes }` (fixa: cópias criadas nos meses seguintes até o atual) · `400` |
+| PUT    | `/api/despesas/:id`   | sim  | `{ descricao, valor, categoria?, recorrente?, cartaoId? }` | `200 { despesa, propagadas, fixosPorMes }` (fixa: descrição/categoria/cartão/recorrente vão para os meses seguintes; valor e paga não) · `400` · `404` (não altera `paga`) |
 | PATCH  | `/api/despesas/:id`   | sim  | `{ paga: boolean }`                                | `200 { despesa }` · `400` · `404`                    |
 | PATCH  | `/api/despesas/pagas` | sim  | `{ mes, paga?, cartaoId?, ids?, restaurarFaturas? }` | `200 { atualizadas, ids, faturas, faturaPagaAntes }` — pagar/despagar EM LOTE (um `updateMany`): despesas do mês (ou só as do cartão) **e** as faturas informadas do mês (do cartão ou de todos) — o pago das linhas calculadas. `cartaoId` + `ids: []` = só a linha calculada do cartão. `ids`/`restaurarFaturas` servem ao "Desfazer". Idempotente · `400` · `404` (cartão de outro usuário) |
 | DELETE | `/api/despesas/:id`   | sim  | query `?escopo=seguintes` (opcional, só fixa)      | `200 { removidas }` (padrão: só esta; `seguintes`: também as cópias fixas dos meses seguintes) · `400` · `404` |
